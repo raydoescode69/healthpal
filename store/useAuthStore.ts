@@ -1,14 +1,10 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Session, User } from "@supabase/supabase-js";
 import type { UserProfile } from "../lib/types";
 
-const secureStoreStorage = createJSONStorage(() => ({
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
-}));
+const asyncStoreStorage = createJSONStorage(() => AsyncStorage);
 
 interface AuthState {
   session: Session | null;
@@ -33,7 +29,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "auth-store",
-      storage: secureStoreStorage,
+      storage: asyncStoreStorage,
     }
   )
 );

@@ -1,12 +1,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const secureStoreStorage = createJSONStorage(() => ({
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
-}));
+const asyncStoreStorage = createJSONStorage(() => AsyncStorage);
 
 interface ThemeState {
   mode: "dark" | "light";
@@ -24,7 +20,7 @@ export const useThemeStore = create<ThemeState>()(
     }),
     {
       name: "theme-store",
-      storage: secureStoreStorage,
+      storage: asyncStoreStorage,
     }
   )
 );

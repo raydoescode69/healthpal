@@ -69,7 +69,7 @@ export default function OnboardingScreen() {
       }
 
       setProfile(profileData);
-      router.replace("/(tabs)/chat");
+      router.replace("/(main)/chat");
     } catch (err: any) {
       Alert.alert("Error", err.message ?? "Failed to save profile.");
     }

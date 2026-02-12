@@ -46,7 +46,7 @@ export default function LoginScreen() {
 
         if (profile) {
           setProfile(profile);
-          router.replace("/(tabs)/chat");
+          router.replace("/(main)/chat");
         } else {
           router.replace("/(auth)/onboarding");
         }

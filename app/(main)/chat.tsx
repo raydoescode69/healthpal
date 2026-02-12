@@ -9,6 +9,9 @@ import {
   Keyboard,
   Platform,
   ActivityIndicator,
+  Alert,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
 import Animated, {
   FadeIn,
@@ -20,15 +23,20 @@ import Animated, {
   withDelay,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
+import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/useAuthStore";
+import { useTrackingStore } from "../../store/useTrackingStore";
 import { sendMessage, generateWelcome } from "../../lib/chatEngine";
+import { analyzeFoodFromText } from "../../lib/foodAnalyzer";
 import { QUICK_ACTIONS } from "../../lib/types";
-import type { DietPlanData, ConversationItem } from "../../lib/types";
+import type { DietPlanData, ConversationItem, PinnedMessage, FoodAnalysisResult } from "../../lib/types";
 import DietPlanCardComponent from "../../components/DietPlanCard";
 import ChatSidebar from "../../components/ChatSidebar";
+import FoodLogModal from "../../components/FoodLogModal";
 
 // ── Display types ──────────────────────────────────────────────
 interface DisplayMessage {
@@ -116,18 +124,36 @@ function useTypewriter(fullText: string, speed: number = 18) {
 }
 
 // ── Message bubble ──────────────────────────────────────────────
-function MessageBubble({ item }: { item: DisplayMessage }) {
+function MessageBubble({
+  item,
+  isPinned,
+  onLongPress,
+}: {
+  item: DisplayMessage;
+  isPinned?: boolean;
+  onLongPress?: () => void;
+}) {
   const isUser = item.role === "user";
 
   return (
-    <View className={`px-5 mb-2.5 ${isUser ? "items-end" : "items-start"}`}>
+    <Pressable
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      className={`px-5 mb-2.5 ${isUser ? "items-end" : "items-start"}`}
+    >
       <View
         className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
           isUser
             ? "bg-[#1A2E0A] rounded-br-sm"
             : "bg-[#161616] rounded-bl-sm"
         }`}
+        style={isPinned ? { borderWidth: 1, borderColor: "#A8FF3E" } : undefined}
       >
+        {isPinned && (
+          <Text style={{ color: "#A8FF3E", fontSize: 10, marginBottom: 2 }}>
+            {"\uD83D\uDCCC"} Pinned
+          </Text>
+        )}
         <Text
           className={`text-[15px] leading-[22px] font-dm ${
             isUser ? "text-[#D4E8BC]" : "text-[#C8C8C8]"
@@ -136,7 +162,7 @@ function MessageBubble({ item }: { item: DisplayMessage }) {
           {item.content}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -166,10 +192,125 @@ function BotTypingBubble({
   );
 }
 
+// ── Pinned message banner (supports multiple) ──────────────────
+function PinnedBanner({
+  messages,
+  onTap,
+  onUnpin,
+}: {
+  messages: DisplayMessage[];
+  onTap: (messageId: string) => void;
+  onUnpin: (messageId: string) => void;
+}) {
+  if (messages.length === 0) return null;
+  return (
+    <View style={{ borderBottomWidth: 1, borderBottomColor: "#2a5a2a" }}>
+      {messages.map((msg) => (
+        <Pressable
+          key={msg.id}
+          onPress={() => onTap(msg.id)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: "#1A2E0A",
+            paddingHorizontal: 16,
+            paddingVertical: 7,
+            borderBottomWidth: messages.length > 1 ? 0.5 : 0,
+            borderBottomColor: "#2a5a2a",
+          }}
+        >
+          <Text style={{ color: "#A8FF3E", fontSize: 12, marginRight: 8 }}>{"\uD83D\uDCCC"}</Text>
+          <Text
+            style={{ flex: 1, color: "#D4E8BC", fontSize: 13 }}
+            numberOfLines={1}
+          >
+            {msg.content}
+          </Text>
+          <Pressable onPress={() => onUnpin(msg.id)} hitSlop={8}>
+            <Text style={{ color: "#666", fontSize: 16, marginLeft: 8 }}>{"\u2715"}</Text>
+          </Pressable>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+// ── Inline food prompt ──────────────────────────────────────────
+function FoodPrompt({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (food: string) => void;
+  onCancel: () => void;
+}) {
+  const [food, setFood] = useState("");
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#161616", paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: "#222" }}>
+      <TextInput
+        value={food}
+        onChangeText={setFood}
+        placeholder="What did you eat?"
+        placeholderTextColor="#555"
+        autoFocus
+        style={{ flex: 1, color: "#fff", fontSize: 14, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: "#1A1A1A", borderRadius: 8 }}
+      />
+      <Pressable
+        onPress={() => food.trim() && onSubmit(food.trim())}
+        style={{ marginLeft: 8, backgroundColor: "#1A2E0A", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+      >
+        <Text style={{ color: "#A8FF3E", fontWeight: "600", fontSize: 13 }}>Log</Text>
+      </Pressable>
+      <Pressable onPress={onCancel} style={{ marginLeft: 6, paddingHorizontal: 8, paddingVertical: 8 }}>
+        <Text style={{ color: "#666", fontSize: 13 }}>Cancel</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ── Inline water prompt ─────────────────────────────────────────
+function WaterPrompt({
+  onSelect,
+  onCancel,
+}: {
+  onSelect: (count: number) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#161616", paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: "#222", gap: 8 }}>
+      <Text style={{ color: "#888", fontSize: 13, marginRight: 4 }}>{"\uD83D\uDCA7"} Glasses:</Text>
+      {[1, 2, 3, 4].map((n) => (
+        <Pressable
+          key={n}
+          onPress={() => onSelect(n)}
+          style={({ pressed }) => ({
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: pressed ? "#2a5a2a" : "#1A2E0A",
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: 1,
+            borderColor: "#2a5a2a",
+          })}
+        >
+          <Text style={{ color: "#A8FF3E", fontWeight: "bold", fontSize: 16 }}>{n}</Text>
+        </Pressable>
+      ))}
+      <Pressable onPress={onCancel} style={{ marginLeft: "auto", paddingHorizontal: 8, paddingVertical: 8 }}>
+        <Text style={{ color: "#666", fontSize: 13 }}>Cancel</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 // ── Main chat screen ────────────────────────────────────────────
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const session = useAuthStore((s) => s.session);
+  const profile = useAuthStore((s) => s.profile);
+  const logout = useAuthStore((s) => s.logout);
+  const { addWater, waterGlasses, saveFoodLog, loadTodayLogs } = useTrackingStore();
   const flatListRef = useRef<FlatList>(null);
 
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -191,8 +332,19 @@ export default function ChatScreen() {
   const conversationCreatedRef = useRef(false);
   const welcomeSent = useRef(false);
 
-  // Diet plan shown flag — persisted per conversation
+  // Diet plan shown flag
   const dietPlanShownRef = useRef(false);
+
+  // Pin state — multiple pins, persisted to Supabase
+  const [pinnedMessageIds, setPinnedMessageIds] = useState<Set<string>>(new Set());
+
+  // Inline prompt states
+  const [showFoodPrompt, setShowFoodPrompt] = useState(false);
+  const [showWaterPrompt, setShowWaterPrompt] = useState(false);
+  const [showFoodLogModal, setShowFoodLogModal] = useState(false);
+
+  // Smart scroll tracking
+  const isNearBottomRef = useRef(true);
 
   const getDietPlanKey = (convId: string) => `dietPlanShown_${convId}`;
 
@@ -219,10 +371,11 @@ export default function ChatScreen() {
     setListData([...messages]);
   }, [messages]);
 
-  // ── Load chat history on mount ─────────────────────────────
+  // ── Load chat history + food logs on mount ──────────────────
   useEffect(() => {
     if (!userId) return;
     loadLatestConversation();
+    loadTodayLogs(userId);
   }, [userId]);
 
   const loadLatestConversation = async () => {
@@ -239,6 +392,7 @@ export default function ChatScreen() {
         conversationIdRef.current = latestConv.id;
         conversationCreatedRef.current = true;
         await loadDietPlanFlag(latestConv.id);
+        loadPinnedMessages(latestConv.id);
 
         const { data: msgs } = await supabase
           .from("messages")
@@ -268,15 +422,12 @@ export default function ChatScreen() {
     if (conversationCreatedRef.current || !userId) return;
     conversationCreatedRef.current = true;
     try {
-      const { error } = await supabase.from("conversations").insert({
+      await supabase.from("conversations").insert({
         id: conversationIdRef.current,
         user_id: userId,
         title: title.slice(0, 40),
       });
-      console.log("[Chat] ensureConversation:", { id: conversationIdRef.current, title: title.slice(0, 40), error: error?.message });
-    } catch (e) {
-      console.log("[Chat] ensureConversation error:", e);
-    }
+    } catch {}
   };
 
   // ── Welcome message ────────────────────────────────────────
@@ -326,6 +477,10 @@ export default function ChatScreen() {
     pendingDietPlanRef.current = null;
     isProcessingBubblesRef.current = false;
     setShowTypingIndicator(false);
+    setPinnedMessageIds(new Set());
+    setShowFoodPrompt(false);
+    setShowWaterPrompt(false);
+    setShowFoodLogModal(false);
 
     welcomeSent.current = false;
     sendWelcome();
@@ -346,6 +501,12 @@ export default function ChatScreen() {
     pendingDietPlanRef.current = null;
     isProcessingBubblesRef.current = false;
     setShowTypingIndicator(false);
+    setPinnedMessageIds(new Set());
+    setShowFoodPrompt(false);
+    setShowWaterPrompt(false);
+    setShowFoodLogModal(false);
+
+    loadPinnedMessages(conv.id);
 
     try {
       const { data: msgs } = await supabase
@@ -359,9 +520,7 @@ export default function ChatScreen() {
       if (msgs && msgs.length > 0) {
         setMessages(msgs);
       }
-    } catch {
-      // silent
-    }
+    } catch {}
   };
 
   // ── Save message to DB ─────────────────────────────────────
@@ -374,16 +533,28 @@ export default function ChatScreen() {
         content,
         conversation_id: conversationIdRef.current,
       });
-    } catch {
-      // silent
-    }
+    } catch {}
   };
 
   // ── Scroll helpers ─────────────────────────────────────────
   const scrollToEnd = useCallback(() => {
+    if (isNearBottomRef.current) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 60);
+    }
+  }, []);
+
+  const forceScrollToEnd = useCallback(() => {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 60);
+  }, []);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    isNearBottomRef.current = distanceFromBottom < 120;
   }, []);
 
   // ── Handle personalize button ──────────────────────────────
@@ -391,11 +562,114 @@ export default function ChatScreen() {
     handleSend("yes, customize my diet plan");
   }, []);
 
+  // ── Load pinned messages from Supabase ──────────────────────
+  const loadPinnedMessages = useCallback(async (convId: string) => {
+    if (!userId) return;
+    try {
+      const { data } = await supabase
+        .from("pinned_messages")
+        .select("message_id")
+        .eq("conversation_id", convId)
+        .eq("user_id", userId);
+      if (data) {
+        setPinnedMessageIds(new Set(data.map((r: { message_id: string }) => r.message_id)));
+      } else {
+        setPinnedMessageIds(new Set());
+      }
+    } catch {
+      setPinnedMessageIds(new Set());
+    }
+  }, [userId]);
+
+  // ── Pin / unpin a message (persisted) ─────────────────────
+  const handlePinMessage = useCallback(async (messageId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const convId = conversationIdRef.current;
+    const wasPinned = pinnedMessageIds.has(messageId);
+
+    // Optimistic update
+    setPinnedMessageIds((prev) => {
+      const next = new Set(prev);
+      if (wasPinned) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+
+    try {
+      if (wasPinned) {
+        await supabase
+          .from("pinned_messages")
+          .delete()
+          .eq("conversation_id", convId)
+          .eq("message_id", messageId)
+          .eq("user_id", userId);
+      } else {
+        await supabase
+          .from("pinned_messages")
+          .upsert({
+            conversation_id: convId,
+            message_id: messageId,
+            user_id: userId,
+          }, { onConflict: "conversation_id,message_id" });
+      }
+    } catch {
+      // Revert on failure
+      setPinnedMessageIds((prev) => {
+        const reverted = new Set(prev);
+        if (wasPinned) reverted.add(messageId);
+        else reverted.delete(messageId);
+        return reverted;
+      });
+    }
+  }, [pinnedMessageIds, userId]);
+
+  const handleUnpinMessage = useCallback(async (messageId: string) => {
+    const convId = conversationIdRef.current;
+    setPinnedMessageIds((prev) => {
+      const next = new Set(prev);
+      next.delete(messageId);
+      return next;
+    });
+    try {
+      await supabase
+        .from("pinned_messages")
+        .delete()
+        .eq("conversation_id", convId)
+        .eq("message_id", messageId)
+        .eq("user_id", userId);
+    } catch {}
+  }, [userId]);
+
+  const handleScrollToPinned = useCallback((messageId: string) => {
+    const index = listData.findIndex((item) => item.id === messageId);
+    if (index >= 0) {
+      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+    }
+  }, [listData]);
+
+  // Resolve pinned message objects for the banner
+  const pinnedMessages: DisplayMessage[] = listData.filter(
+    (item) => pinnedMessageIds.has(item.id) && !isDietCard(item)
+  ) as DisplayMessage[];
+
+  // ── Logout handler ─────────────────────────────────────────
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+    logout();
+    router.replace("/(auth)");
+  };
+
   // ── Process bubble queue ───────────────────────────────────
   const processBubbleQueue = useCallback(() => {
     if (isProcessingBubblesRef.current) return;
     if (bubbleQueueRef.current.length === 0) {
-      // All bubbles done — show diet card if pending
       if (pendingDietPlanRef.current) {
         const plan = pendingDietPlanRef.current;
         pendingDietPlanRef.current = null;
@@ -436,7 +710,6 @@ export default function ChatScreen() {
     }, 700);
   }, [scrollToEnd]);
 
-  // Called when a typewriter bubble finishes
   const handleBubbleDone = useCallback(() => {
     setCurrentBubbleText(null);
     isProcessingBubblesRef.current = false;
@@ -452,6 +725,8 @@ export default function ChatScreen() {
     if (!content || isLoading) return;
 
     Keyboard.dismiss();
+    setShowFoodPrompt(false);
+    setShowWaterPrompt(false);
 
     const userMsg: DisplayMessage = {
       id: Date.now().toString(),
@@ -465,9 +740,8 @@ export default function ChatScreen() {
     setIsLoading(true);
     setShowTypingIndicator(true);
     setCurrentBubbleText(null);
-    scrollToEnd();
+    forceScrollToEnd();
 
-    // Create conversation on first user message
     ensureConversation(content);
     saveMessage("user", content);
 
@@ -508,6 +782,127 @@ export default function ChatScreen() {
     }
   };
 
+  // ── Quick action handlers ──────────────────────────────────
+  const handleQuickAction = (label: string) => {
+    switch (label) {
+      case "Log Food":
+        setShowWaterPrompt(false);
+        setShowFoodPrompt(false);
+        setShowFoodLogModal(true);
+        break;
+      case "My Plan": {
+        // Find existing diet card in listData
+        const dietIndex = listData.findIndex((item) => isDietCard(item));
+        if (dietIndex >= 0) {
+          flatListRef.current?.scrollToIndex({ index: dietIndex, animated: true, viewPosition: 0.3 });
+        } else {
+          handleSend("give me a diet plan");
+        }
+        break;
+      }
+      case "Motivate me":
+        handleSend("Motivate me");
+        break;
+      case "Water intake":
+        setShowFoodPrompt(false);
+        setShowWaterPrompt(true);
+        break;
+      default:
+        handleSend(label);
+    }
+  };
+
+  const handleFoodSubmit = async (food: string) => {
+    setShowFoodPrompt(false);
+    try {
+      setIsLoading(true);
+      setShowTypingIndicator(true);
+
+      // Add user message to chat
+      const userMsg: DisplayMessage = {
+        id: Date.now().toString(),
+        role: "user",
+        content: `I ate: ${food}`,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      forceScrollToEnd();
+      ensureConversation(food);
+      saveMessage("user", `I ate: ${food}`);
+
+      const result = await analyzeFoodFromText(food);
+      await saveFoodLog(userId, result);
+
+      setShowTypingIndicator(false);
+
+      const confirmText = `Logged: ${result.food_name} \u2014 ${result.calories} cal, ${result.protein_g}g P, ${result.carbs_g}g C, ${result.fat_g}g F \u2705`;
+      const botMsg: DisplayMessage = {
+        id: `bot-${Date.now()}`,
+        role: "assistant",
+        content: confirmText,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, botMsg]);
+      saveMessage("assistant", confirmText);
+      setCurrentBubbleText(confirmText);
+      scrollToEnd();
+    } catch {
+      setShowTypingIndicator(false);
+      const errMsg: DisplayMessage = {
+        id: `err-${Date.now()}`,
+        role: "assistant",
+        content: "arre yaar food analyze nahi ho paya \uD83D\uDE05 try again?",
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFoodAnalyzed = async (result: FoodAnalysisResult, imageUri?: string) => {
+    try {
+      setIsLoading(true);
+      setShowTypingIndicator(true);
+      forceScrollToEnd();
+
+      await saveFoodLog(userId, result, imageUri);
+
+      setShowTypingIndicator(false);
+
+      const confirmText = `Logged: ${result.food_name} \u2014 ${result.calories} cal, ${result.protein_g}g P, ${result.carbs_g}g C, ${result.fat_g}g F \u2705`;
+      const botMsg: DisplayMessage = {
+        id: `bot-${Date.now()}`,
+        role: "assistant",
+        content: confirmText,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, botMsg]);
+      ensureConversation(result.food_name);
+      saveMessage("assistant", confirmText);
+      setCurrentBubbleText(confirmText);
+      scrollToEnd();
+    } catch {
+      setShowTypingIndicator(false);
+      const errMsg: DisplayMessage = {
+        id: `err-${Date.now()}`,
+        role: "assistant",
+        content: "food save nahi ho paya bhai \uD83D\uDE15 try again?",
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleWaterSelect = (count: number) => {
+    setShowWaterPrompt(false);
+    addWater(count);
+    const total = waterGlasses + count;
+    handleSend(`I just drank ${count} glass${count > 1 ? "es" : ""} of water. Total today: ${total} glasses.`);
+  };
+
   // ── Loading screen ─────────────────────────────────────────
   if (loadingHistory) {
     return (
@@ -536,7 +931,6 @@ export default function ChatScreen() {
           className="px-5 pb-3 border-b border-[#151515]"
         >
           <View className="flex-row items-center justify-between">
-            {/* Left: hamburger */}
             <Pressable
               onPress={() => setSidebarOpen(true)}
               className="w-9 h-9 rounded-full items-center justify-center active:opacity-60"
@@ -544,61 +938,98 @@ export default function ChatScreen() {
               <Text className="text-[18px] text-[#888]">{"\u2630"}</Text>
             </Pressable>
 
-            {/* Center: Pal */}
             <View className="flex-row items-center">
               <Text className="text-[17px] text-white font-sora-semibold">
                 Pal {"\uD83C\uDF3F"}
               </Text>
             </View>
 
-            {/* Right spacer to keep title centered */}
             <View className="w-9 h-9" />
           </View>
         </View>
 
-        {/* Messages — tap to dismiss keyboard */}
-        <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
-          <FlatList
-            ref={flatListRef}
-            data={listData}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item, index }) => {
-              if (isDietCard(item)) {
-                return (
-                  <DietPlanCardComponent
-                    plan={item.plan}
-                    onPersonalize={!item.plan.is_personalized ? handlePersonalize : undefined}
-                  />
-                );
-              }
-
-              if (
-                isLastBubbleTyping &&
-                index === listData.length - 1 &&
-                !isDietCard(item)
-              ) {
-                return (
-                  <BotTypingBubble
-                    fullText={currentBubbleText!}
-                    onDone={handleBubbleDone}
-                  />
-                );
-              }
-
-              return <MessageBubble item={item as DisplayMessage} />;
-            }}
-            contentContainerStyle={{
-              paddingTop: 16,
-              paddingBottom: 8,
-              flexGrow: 1,
-            }}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={scrollToEnd}
+        {/* Pinned message banners */}
+        {pinnedMessages.length > 0 && (
+          <PinnedBanner
+            messages={pinnedMessages}
+            onTap={handleScrollToPinned}
+            onUnpin={handleUnpinMessage}
           />
-        </Pressable>
+        )}
+
+        {/* Messages */}
+        <FlatList
+          ref={flatListRef}
+          data={listData}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item, index }) => {
+            if (isDietCard(item)) {
+              return (
+                <DietPlanCardComponent
+                  plan={item.plan}
+                  onPersonalize={!item.plan.is_personalized ? handlePersonalize : undefined}
+                />
+              );
+            }
+
+            if (
+              isLastBubbleTyping &&
+              index === listData.length - 1 &&
+              !isDietCard(item)
+            ) {
+              return (
+                <BotTypingBubble
+                  fullText={currentBubbleText!}
+                  onDone={handleBubbleDone}
+                />
+              );
+            }
+
+            return (
+              <MessageBubble
+                item={item as DisplayMessage}
+                isPinned={pinnedMessageIds.has(item.id)}
+                onLongPress={() => handlePinMessage(item.id)}
+              />
+            );
+          }}
+          contentContainerStyle={{
+            paddingTop: 16,
+            paddingBottom: 8,
+            flexGrow: 1,
+            justifyContent: "flex-end",
+          }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={Keyboard.dismiss}
+          onScroll={handleScroll}
+          scrollEventThrottle={100}
+          onScrollToIndexFailed={(info) => {
+            setTimeout(() => {
+              flatListRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+              });
+            }, 200);
+          }}
+        />
 
         {/* Typing indicator */}
         {showTypingIndicator && <TypingIndicator />}
+
+        {/* Inline prompts */}
+        {showFoodPrompt && (
+          <FoodPrompt
+            onSubmit={handleFoodSubmit}
+            onCancel={() => setShowFoodPrompt(false)}
+          />
+        )}
+        {showWaterPrompt && (
+          <WaterPrompt
+            onSelect={handleWaterSelect}
+            onCancel={() => setShowWaterPrompt(false)}
+          />
+        )}
 
         {/* Bottom bar */}
         <View
@@ -610,7 +1041,7 @@ export default function ChatScreen() {
             {QUICK_ACTIONS.map((action) => (
               <Pressable
                 key={action.label}
-                onPress={() => handleSend(action.label)}
+                onPress={() => handleQuickAction(action.label)}
                 disabled={isLoading}
                 className="bg-[#111] border border-[#1C1C1C] rounded-full px-3 py-1.5 mr-1.5 active:opacity-60"
               >
@@ -660,6 +1091,14 @@ export default function ChatScreen() {
         </View>
       </KeyboardAvoidingView>
 
+      {/* Food log modal */}
+      <FoodLogModal
+        visible={showFoodLogModal}
+        onClose={() => setShowFoodLogModal(false)}
+        onTypeFood={() => setShowFoodPrompt(true)}
+        onFoodAnalyzed={handleFoodAnalyzed}
+      />
+
       {/* Sidebar overlay */}
       <ChatSidebar
         visible={sidebarOpen}
@@ -668,6 +1107,8 @@ export default function ChatScreen() {
         currentConversationId={conversationIdRef.current}
         onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
+        profile={profile}
+        onLogout={handleLogout}
       />
     </View>
   );

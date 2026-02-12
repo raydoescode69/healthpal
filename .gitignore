@@ -37,6 +37,11 @@ yarn-error.*
 # Claude Code
 .claude/
 
+# AI tool configs
+.agent/
+.agents/
+.cursor/
+
 # Windows artifacts
 nul
 

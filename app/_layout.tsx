@@ -24,7 +24,7 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
-  const { session, setSession, setUser } = useAuthStore();
+  const { session, setSession, setUser, setProfile } = useAuthStore();
   const mode = useThemeStore((s) => s.mode);
 
   const [fontsLoaded] = useFonts({
@@ -39,9 +39,20 @@ export default function RootLayout() {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+
+        if (session?.user?.id) {
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", session.user.id)
+              .single();
+            if (profile) setProfile(profile);
+          } catch {}
+        }
       }
     );
     return () => subscription.unsubscribe();
@@ -60,7 +71,7 @@ export default function RootLayout() {
     if (!session && !inAuth) {
       router.replace("/(auth)");
     } else if (session && inAuth) {
-      router.replace("/(tabs)/chat");
+      router.replace("/(main)/chat");
     }
   }, [session, fontsLoaded, segments]);
 

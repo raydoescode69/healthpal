@@ -56,6 +56,10 @@ export interface DietMeal {
   name: string;
   time: string;
   cal: number;
+  protein_g?: number;
+  carbs_g?: number;
+  fat_g?: number;
+  portion?: string;
 }
 
 export interface DietDay {
@@ -67,6 +71,9 @@ export interface DietPlanData {
   type: "DIET_PLAN";
   is_personalized: boolean;
   daily_calories: number;
+  daily_protein_g?: number;
+  daily_carbs_g?: number;
+  daily_fat_g?: number;
   days: DietDay[];
 }
 
@@ -75,8 +82,39 @@ export interface ParsedBotResponse {
   dietPlan?: DietPlanData;
 }
 
+// ── Food tracking types ──────────────────────────────────────
+export interface FoodLog {
+  id: string;
+  user_id: string;
+  food_name: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  meal_type: string;
+  image_url?: string | null;
+  logged_at: string;
+}
+
+export interface FoodAnalysisResult {
+  food_name: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  meal_type: string;
+}
+
 export interface ConversationItem {
   id: string;
   title: string;
   created_at: string;
+}
+
+export interface PinnedMessage {
+  id: string;
+  conversation_id: string;
+  message_id: string;
+  user_id: string;
+  pinned_at: string;
 }

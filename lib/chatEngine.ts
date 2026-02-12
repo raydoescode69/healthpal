@@ -66,6 +66,34 @@ export async function loadContext(userId: string): Promise<LoadedContext> {
   };
 }
 
+// ── Calorie & macro calculations ─────────────────────────────
+function calculateDailyCalories(profile: UserProfileData | null): number {
+  if (!profile?.weight_kg || !profile?.height_cm || !profile?.age) return 2000;
+  // Mifflin-St Jeor (male default — close enough for both genders in this context)
+  const bmr = 10 * profile.weight_kg + 6.25 * profile.height_cm - 5 * profile.age + 5;
+  const tdee = bmr * 1.55; // moderate activity
+  const goal = profile.goal?.toLowerCase() || "";
+  if (goal.includes("lose")) return Math.round(tdee - 500);
+  if (goal.includes("gain") || goal.includes("muscle")) return Math.round(tdee + 400);
+  return Math.round(tdee);
+}
+
+function calculateMacros(
+  calories: number,
+  goal: string | null | undefined
+): { protein: number; carbs: number; fat: number } {
+  const g = (goal || "").toLowerCase();
+  let pPct = 0.3, cPct = 0.4, fPct = 0.3;
+  if (g.includes("lose")) { pPct = 0.35; cPct = 0.35; fPct = 0.3; }
+  if (g.includes("gain") || g.includes("muscle")) { pPct = 0.35; cPct = 0.45; fPct = 0.2; }
+  if (g.includes("keto")) { pPct = 0.3; cPct = 0.1; fPct = 0.6; }
+  return {
+    protein: Math.round((calories * pPct) / 4),
+    carbs: Math.round((calories * cPct) / 4),
+    fat: Math.round((calories * fPct) / 9),
+  };
+}
+
 // ── buildSystemPrompt ────────────────────────────────────────
 export function buildSystemPrompt(context: LoadedContext): string {
   const hour = new Date().getHours();
@@ -115,10 +143,18 @@ DIET PLAN FORMAT:
 When the user EXPLICITLY asks for a diet plan, meal plan, eating schedule, or uses words like "diet plan", "meal plan", "khana plan", "new plan", "update plan":
 - If you have their profile data (weight, goal, diet_type), generate a PERSONALIZED plan
 - If you don't have enough info, generate a GENERIC plan and offer to personalize
+- Target daily calories: ${calculateDailyCalories(p)} kcal
+- Target macros: ~${calculateMacros(calculateDailyCalories(p), p?.goal).protein}g protein, ~${calculateMacros(calculateDailyCalories(p), p?.goal).carbs}g carbs, ~${calculateMacros(calculateDailyCalories(p), p?.goal).fat}g fat
 - Output the plan as a single line starting with "DIET_PLAN:" followed by valid JSON:
-DIET_PLAN:{"type":"DIET_PLAN","is_personalized":false,"daily_calories":2000,"days":[{"day":"Monday","meals":[{"emoji":"🥣","name":"Oats Bowl","time":"8:00 AM","cal":350}]}]}
-- Include 7 days, each with 4-5 meals (breakfast, snack, lunch, snack, dinner)
-- Add a text bubble before the diet plan line explaining it briefly
+DIET_PLAN:{"type":"DIET_PLAN","is_personalized":true,"daily_calories":${calculateDailyCalories(p)},"daily_protein_g":${calculateMacros(calculateDailyCalories(p), p?.goal).protein},"daily_carbs_g":${calculateMacros(calculateDailyCalories(p), p?.goal).carbs},"daily_fat_g":${calculateMacros(calculateDailyCalories(p), p?.goal).fat},"days":[{"day":"Monday","meals":[{"emoji":"🥣","name":"Masala Oats","time":"8:00 AM","cal":320,"protein_g":12,"carbs_g":45,"fat_g":8,"portion":"1 bowl (200g)"}]}]}
+- Include 7 days, each with 5 meals (breakfast, mid-morning snack, lunch, evening snack, dinner)
+- ALL 7 days must have UNIQUE meals — no repeated meals across days
+- Every meal MUST include protein_g, carbs_g, fat_g, and portion fields
+- Include Indian food options naturally (dal, roti, paneer, chicken curry, idli, poha, etc.) mixed with global options
+- Respect diet_type: ${p?.diet_type ? p.diet_type.replace(/_/g, " ") : "no preference"} — never include non-veg items for veg/vegan users
+- Add a short text bubble BEFORE the DIET_PLAN: line (e.g. "here's your plan bhai 💪")
+- The DIET_PLAN: line MUST be on its OWN line with the COMPLETE JSON on that SAME line — do NOT pretty-print, do NOT use newlines inside the JSON, do NOT wrap in code blocks
+- The entire JSON must be a SINGLE LINE of minified JSON immediately after "DIET_PLAN:"
 
 CRITICAL DIET PLAN RULES:
 - ONLY include DIET_PLAN: JSON when user EXPLICITLY asks for a diet/meal plan
@@ -176,27 +212,92 @@ async function callOpenAI(
 // ── parseResponse ────────────────────────────────────────────
 export function parseResponse(raw: string): ParsedBotResponse {
   let dietPlan: DietPlanData | undefined;
-  const textParts: string[] = [];
+  let textContent = raw;
 
-  const lines = raw.split("\n");
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("DIET_PLAN:")) {
-      try {
-        const jsonStr = trimmed.slice("DIET_PLAN:".length).trim();
-        dietPlan = JSON.parse(jsonStr) as DietPlanData;
-      } catch {
-        // If JSON parse fails, treat as regular text
-        textParts.push(trimmed);
+  // Strategy 1: Find DIET_PLAN: marker and extract everything after it as JSON
+  const dietMarkerIdx = raw.indexOf("DIET_PLAN:");
+  if (dietMarkerIdx !== -1) {
+    const beforeMarker = raw.slice(0, dietMarkerIdx);
+    const afterMarker = raw.slice(dietMarkerIdx + "DIET_PLAN:".length);
+
+    // Extract JSON — find the outermost { ... } block
+    const jsonStart = afterMarker.indexOf("{");
+    if (jsonStart !== -1) {
+      let depth = 0;
+      let jsonEnd = -1;
+      for (let i = jsonStart; i < afterMarker.length; i++) {
+        if (afterMarker[i] === "{") depth++;
+        else if (afterMarker[i] === "}") {
+          depth--;
+          if (depth === 0) { jsonEnd = i; break; }
+        }
       }
-    } else if (trimmed) {
-      textParts.push(trimmed);
+      if (jsonEnd !== -1) {
+        const jsonStr = afterMarker.slice(jsonStart, jsonEnd + 1);
+        try {
+          dietPlan = JSON.parse(jsonStr) as DietPlanData;
+          // Text is everything before the marker + everything after the JSON
+          textContent = beforeMarker + afterMarker.slice(jsonEnd + 1);
+        } catch {
+          // JSON parse failed, try cleaning it
+          try {
+            const cleaned = jsonStr.replace(/[\n\r\t]/g, "").replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+            dietPlan = JSON.parse(cleaned) as DietPlanData;
+            textContent = beforeMarker + afterMarker.slice(jsonEnd + 1);
+          } catch {
+            // Give up on this approach
+          }
+        }
+      }
     }
   }
 
-  // Join remaining text and split by ||| delimiter
-  const joined = textParts.join("\n");
-  const bubbles = joined
+  // Strategy 2: If no DIET_PLAN marker found, look for JSON in code blocks
+  if (!dietPlan) {
+    const codeBlockMatch = raw.match(/```(?:json)?\s*(\{[\s\S]*?"type"\s*:\s*"DIET_PLAN"[\s\S]*?\})\s*```/);
+    if (codeBlockMatch) {
+      try {
+        const cleaned = codeBlockMatch[1].replace(/[\n\r\t]/g, "").replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+        dietPlan = JSON.parse(cleaned) as DietPlanData;
+        textContent = raw.replace(codeBlockMatch[0], "");
+      } catch {}
+    }
+  }
+
+  // Strategy 3: Look for raw JSON with "type":"DIET_PLAN" anywhere
+  if (!dietPlan) {
+    const rawJsonMatch = raw.match(/(\{[\s\S]*?"type"\s*:\s*"DIET_PLAN"[\s\S]*)/);
+    if (rawJsonMatch) {
+      const fragment = rawJsonMatch[1];
+      const jsonStart = 0;
+      let depth = 0;
+      let jsonEnd = -1;
+      for (let i = jsonStart; i < fragment.length; i++) {
+        if (fragment[i] === "{") depth++;
+        else if (fragment[i] === "}") {
+          depth--;
+          if (depth === 0) { jsonEnd = i; break; }
+        }
+      }
+      if (jsonEnd !== -1) {
+        try {
+          const cleaned = fragment.slice(0, jsonEnd + 1).replace(/[\n\r\t]/g, "").replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+          dietPlan = JSON.parse(cleaned) as DietPlanData;
+          textContent = raw.replace(fragment.slice(0, jsonEnd + 1), "");
+        } catch {}
+      }
+    }
+  }
+
+  // Clean up text: remove code block markers, DIET_PLAN: leftover, empty lines
+  textContent = textContent
+    .replace(/```json/g, "")
+    .replace(/```/g, "")
+    .replace(/DIET_PLAN:\s*/g, "")
+    .trim();
+
+  // Split by ||| delimiter into bubbles
+  const bubbles = textContent
     .split("|||")
     .map((b) => b.trim())
     .filter((b) => b.length > 0);
@@ -210,6 +311,9 @@ const DIET_PLAN_KEYWORDS = [
   "diet plan", "meal plan", "khana plan", "new plan", "update plan",
   "food plan", "eating plan", "nutrition plan", "weekly plan",
   "diet chart", "meal chart", "7 day plan", "seven day plan",
+  "give me a plan", "make me a plan", "create a plan", "plan bana",
+  "diet bana", "plan de", "plan do", "give me a diet", "make a diet",
+  "suggest a diet", "suggest a plan", "generate a plan",
 ];
 
 function userExplicitlyWantsDietPlan(message: string): boolean {
@@ -243,7 +347,18 @@ export async function sendMessage(
     { role: "user", content: userMessage },
   ];
 
-  const raw = await callOpenAI(messages, "gpt-4o", 1500, 0.75);
+  const isDietRequest = userExplicitlyWantsDietPlan(userMessage);
+  const maxTokens = isDietRequest ? 3500 : 1500;
+
+  // When user explicitly asks for diet plan, add a reinforcement message
+  if (isDietRequest) {
+    messages.push({
+      role: "system",
+      content: `IMPORTANT REMINDER: The user is asking for a diet plan. You MUST respond with DIET_PLAN: followed by minified JSON on a single line. Do NOT write the plan as plain text. Do NOT use markdown tables or bullet points for the plan. Output ONLY the DIET_PLAN:{...json...} format with all 7 days and 5 meals each. Add a brief text bubble before it.`,
+    });
+  }
+
+  const raw = await callOpenAI(messages, "gpt-4o", maxTokens, 0.75);
 
   // Background extraction (fire and forget)
   extractProfileInBackground(userId, userMessage).catch(() => {});
