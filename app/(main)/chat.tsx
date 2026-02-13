@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
@@ -21,7 +22,10 @@ import Animated, {
   withSequence,
   withTiming,
   withDelay,
+  withSpring,
+  runOnJS,
 } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
@@ -44,6 +48,7 @@ interface DisplayMessage {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  replyTo?: { id: string; content: string };
 }
 
 interface DietCardItem {
@@ -124,6 +129,29 @@ function useTypewriter(fullText: string, speed: number = 18) {
 }
 
 // ── Message bubble ──────────────────────────────────────────────
+function tryParseDietPlanFromText(text: string): DietPlanData | null {
+  if (!text.includes('"type"') || !text.includes("DIET_PLAN")) return null;
+  const match = text.match(/(\{[\s\S]*"type"\s*:\s*"DIET_PLAN"[\s\S]*)/);
+  if (!match) return null;
+  const fragment = match[1];
+  let depth = 0;
+  let jsonEnd = -1;
+  for (let i = 0; i < fragment.length; i++) {
+    if (fragment[i] === "{") depth++;
+    else if (fragment[i] === "}") {
+      depth--;
+      if (depth === 0) { jsonEnd = i; break; }
+    }
+  }
+  if (jsonEnd === -1) return null;
+  try {
+    const cleaned = fragment.slice(0, jsonEnd + 1).replace(/[\n\r\t]/g, "").replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+    const parsed = JSON.parse(cleaned);
+    if (parsed?.type === "DIET_PLAN" && parsed?.days) return parsed as DietPlanData;
+  } catch {}
+  return null;
+}
+
 function MessageBubble({
   item,
   isPinned,
@@ -135,12 +163,42 @@ function MessageBubble({
 }) {
   const isUser = item.role === "user";
 
+  // Fallback: if assistant message contains DIET_PLAN JSON, render as card
+  if (!isUser) {
+    const embeddedPlan = tryParseDietPlanFromText(item.content);
+    if (embeddedPlan) {
+      return (
+        <Pressable onLongPress={onLongPress} delayLongPress={400}>
+          <DietPlanCardComponent
+            plan={embeddedPlan}
+            isPinned={isPinned}
+          />
+        </Pressable>
+      );
+    }
+  }
+
   return (
     <Pressable
       onLongPress={onLongPress}
       delayLongPress={400}
       className={`px-5 mb-2.5 ${isUser ? "items-end" : "items-start"}`}
     >
+      {/* Reply reference */}
+      {item.replyTo && (
+        <View style={{
+          maxWidth: "80%",
+          paddingLeft: 10,
+          marginBottom: 4,
+          borderLeftWidth: 2,
+          borderLeftColor: "#A8FF3E",
+          alignSelf: isUser ? "flex-end" : "flex-start",
+        }}>
+          <Text style={{ color: "#666", fontSize: 12 }} numberOfLines={1}>
+            {item.replyTo.content}
+          </Text>
+        </View>
+      )}
       <View
         className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
           isUser
@@ -163,6 +221,148 @@ function MessageBubble({
         </Text>
       </View>
     </Pressable>
+  );
+}
+
+// ── Swipeable message wrapper ────────────────────────────────────
+function SwipeableMessage({
+  children,
+  onSwipeReply,
+}: {
+  children: React.ReactNode;
+  onSwipeReply: () => void;
+}) {
+  const translateX = useSharedValue(0);
+  const hasTriggered = useSharedValue(false);
+
+  const triggerReply = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onSwipeReply();
+  }, [onSwipeReply]);
+
+  const pan = Gesture.Pan()
+    .activeOffsetX(15)
+    .failOffsetY([-10, 10])
+    .onUpdate((e) => {
+      if (e.translationX > 0) {
+        translateX.value = Math.min(e.translationX * 0.6, 80);
+        if (translateX.value >= 50 && !hasTriggered.value) {
+          hasTriggered.value = true;
+          runOnJS(triggerReply)();
+        }
+      }
+    })
+    .onEnd(() => {
+      translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+      hasTriggered.value = false;
+    });
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  const arrowStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(translateX.value / 50, 1),
+    transform: [{ scale: Math.min(translateX.value / 50, 1) }],
+  }));
+
+  return (
+    <View>
+      <Animated.View style={[{ position: "absolute", left: 8, top: 0, bottom: 0, justifyContent: "center" }, arrowStyle]}>
+        <Text style={{ color: "#A8FF3E", fontSize: 18 }}>{"\u21A9"}</Text>
+      </Animated.View>
+      <GestureDetector gesture={pan}>
+        <Animated.View style={animStyle}>
+          {children}
+        </Animated.View>
+      </GestureDetector>
+    </View>
+  );
+}
+
+// ── Draggable FAB ───────────────────────────────────────────────
+const FAB_SIZE = 48;
+
+function DraggableFAB({ onPress }: { onPress: () => void }) {
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const offsetX = useSharedValue(0);
+  const offsetY = useSharedValue(0);
+  const scale = useSharedValue(1);
+
+  const tap = Gesture.Tap().onEnd(() => {
+    runOnJS(onPress)();
+  });
+
+  const pan = Gesture.Pan()
+    .minDistance(8)
+    .onStart(() => {
+      offsetX.value = translateX.value;
+      offsetY.value = translateY.value;
+      scale.value = withSpring(1.1, { damping: 15 });
+    })
+    .onUpdate((e) => {
+      translateX.value = offsetX.value + e.translationX;
+      translateY.value = offsetY.value + e.translationY;
+    })
+    .onEnd(() => {
+      scale.value = withSpring(1, { damping: 15 });
+    });
+
+  const gesture = Gesture.Race(pan, tap);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            bottom: 16,
+            right: 16,
+            width: FAB_SIZE,
+            height: FAB_SIZE,
+            borderRadius: FAB_SIZE / 2,
+            backgroundColor: "#A8FF3E",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+            elevation: 5,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.3,
+            shadowRadius: 4,
+          },
+          animStyle,
+        ]}
+      >
+        <Text style={{ fontSize: 13, fontWeight: "800", color: "#000" }}>Log+</Text>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+// ── Reply reference bubble ──────────────────────────────────────
+function ReplyReference({ text }: { text: string }) {
+  return (
+    <View style={{
+      marginHorizontal: 20,
+      marginBottom: 2,
+      paddingLeft: 10,
+      borderLeftWidth: 2,
+      borderLeftColor: "#A8FF3E",
+    }}>
+      <Text style={{ color: "#777", fontSize: 12 }} numberOfLines={1}>
+        {text}
+      </Text>
+    </View>
   );
 }
 
@@ -194,43 +394,48 @@ function BotTypingBubble({
 
 // ── Pinned message banner (supports multiple) ──────────────────
 function PinnedBanner({
-  messages,
+  items,
   onTap,
   onUnpin,
 }: {
-  messages: DisplayMessage[];
+  items: FlatListItem[];
   onTap: (messageId: string) => void;
   onUnpin: (messageId: string) => void;
 }) {
-  if (messages.length === 0) return null;
+  if (items.length === 0) return null;
   return (
     <View style={{ borderBottomWidth: 1, borderBottomColor: "#2a5a2a" }}>
-      {messages.map((msg) => (
-        <Pressable
-          key={msg.id}
-          onPress={() => onTap(msg.id)}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: "#1A2E0A",
-            paddingHorizontal: 16,
-            paddingVertical: 7,
-            borderBottomWidth: messages.length > 1 ? 0.5 : 0,
-            borderBottomColor: "#2a5a2a",
-          }}
-        >
-          <Text style={{ color: "#A8FF3E", fontSize: 12, marginRight: 8 }}>{"\uD83D\uDCCC"}</Text>
-          <Text
-            style={{ flex: 1, color: "#D4E8BC", fontSize: 13 }}
-            numberOfLines={1}
+      {items.map((item) => {
+        const previewText = isDietCard(item)
+          ? "\uD83E\uDD57 Your 7-Day Plan"
+          : (item as DisplayMessage).content;
+        return (
+          <Pressable
+            key={item.id}
+            onPress={() => onTap(item.id)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#1A2E0A",
+              paddingHorizontal: 16,
+              paddingVertical: 7,
+              borderBottomWidth: items.length > 1 ? 0.5 : 0,
+              borderBottomColor: "#2a5a2a",
+            }}
           >
-            {msg.content}
-          </Text>
-          <Pressable onPress={() => onUnpin(msg.id)} hitSlop={8}>
-            <Text style={{ color: "#666", fontSize: 16, marginLeft: 8 }}>{"\u2715"}</Text>
+            <Text style={{ color: "#A8FF3E", fontSize: 12, marginRight: 8 }}>{"\uD83D\uDCCC"}</Text>
+            <Text
+              style={{ flex: 1, color: "#D4E8BC", fontSize: 13 }}
+              numberOfLines={1}
+            >
+              {previewText}
+            </Text>
+            <Pressable onPress={() => onUnpin(item.id)} hitSlop={8}>
+              <Text style={{ color: "#666", fontSize: 16, marginLeft: 8 }}>{"\u2715"}</Text>
+            </Pressable>
           </Pressable>
-        </Pressable>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -343,6 +548,10 @@ export default function ChatScreen() {
   const [showWaterPrompt, setShowWaterPrompt] = useState(false);
   const [showFoodLogModal, setShowFoodLogModal] = useState(false);
 
+  // Reply state
+  const [replyToMessage, setReplyToMessage] = useState<DisplayMessage | null>(null);
+  const inputRef = useRef<TextInput>(null);
+
   // Smart scroll tracking
   const isNearBottomRef = useRef(true);
 
@@ -422,12 +631,16 @@ export default function ChatScreen() {
     if (conversationCreatedRef.current || !userId) return;
     conversationCreatedRef.current = true;
     try {
-      await supabase.from("conversations").insert({
+      const { error } = await supabase.from("conversations").insert({
         id: conversationIdRef.current,
         user_id: userId,
         title: title.slice(0, 40),
       });
-    } catch {}
+      if (error) console.warn("[DB] Create conversation failed:", error.message);
+      else console.log("[DB] Conversation created:", conversationIdRef.current);
+    } catch (e) {
+      console.warn("[DB] Create conversation error:", e);
+    }
   };
 
   // ── Welcome message ────────────────────────────────────────
@@ -440,8 +653,9 @@ export default function ChatScreen() {
       const welcomeText = await generateWelcome(userId);
       setShowTypingIndicator(false);
 
+      const welcomeId = Crypto.randomUUID();
       const botMsg: DisplayMessage = {
-        id: Date.now().toString(),
+        id: welcomeId,
         role: "assistant",
         content: welcomeText,
         created_at: new Date().toISOString(),
@@ -449,11 +663,11 @@ export default function ChatScreen() {
 
       setMessages([botMsg]);
       setCurrentBubbleText(welcomeText);
-      saveMessage("assistant", welcomeText);
+      saveMessage("assistant", welcomeText, welcomeId);
     } catch {
       setShowTypingIndicator(false);
       const fallbackMsg: DisplayMessage = {
-        id: Date.now().toString(),
+        id: Crypto.randomUUID(),
         role: "assistant",
         content: "yo bhai! kya scene hai? health related kuch bhi puchna ho toh bol \uD83D\uDCAA",
         created_at: new Date().toISOString(),
@@ -481,6 +695,7 @@ export default function ChatScreen() {
     setShowFoodPrompt(false);
     setShowWaterPrompt(false);
     setShowFoodLogModal(false);
+    setReplyToMessage(null);
 
     welcomeSent.current = false;
     sendWelcome();
@@ -505,6 +720,7 @@ export default function ChatScreen() {
     setShowFoodPrompt(false);
     setShowWaterPrompt(false);
     setShowFoodLogModal(false);
+    setReplyToMessage(null);
 
     loadPinnedMessages(conv.id);
 
@@ -524,16 +740,22 @@ export default function ChatScreen() {
   };
 
   // ── Save message to DB ─────────────────────────────────────
-  const saveMessage = async (role: "user" | "assistant", content: string) => {
+  const saveMessage = async (role: "user" | "assistant", content: string, msgId?: string) => {
     if (!userId) return;
     try {
-      await supabase.from("messages").insert({
+      const row: Record<string, string> = {
         user_id: userId,
         role,
         content,
         conversation_id: conversationIdRef.current,
-      });
-    } catch {}
+      };
+      if (msgId) row.id = msgId;
+      const { error } = await supabase.from("messages").insert(row);
+      if (error) console.warn("[DB] Save message failed:", error.message);
+      else console.log("[DB] Message saved:", role, content.slice(0, 40));
+    } catch (e) {
+      console.warn("[DB] Save message error:", e);
+    }
   };
 
   // ── Scroll helpers ─────────────────────────────────────────
@@ -600,20 +822,30 @@ export default function ChatScreen() {
 
     try {
       if (wasPinned) {
-        await supabase
+        const { error } = await supabase
           .from("pinned_messages")
           .delete()
           .eq("conversation_id", convId)
           .eq("message_id", messageId)
           .eq("user_id", userId);
+        if (error) {
+          console.warn("[Pin] Unpin failed:", error.message);
+          throw error;
+        }
+        console.log("[Pin] Unpinned:", messageId);
       } else {
-        await supabase
+        const { error } = await supabase
           .from("pinned_messages")
           .upsert({
             conversation_id: convId,
             message_id: messageId,
             user_id: userId,
           }, { onConflict: "conversation_id,message_id" });
+        if (error) {
+          console.warn("[Pin] Pin failed:", error.message);
+          throw error;
+        }
+        console.log("[Pin] Pinned:", messageId);
       }
     } catch {
       // Revert on failure
@@ -650,10 +882,16 @@ export default function ChatScreen() {
     }
   }, [listData]);
 
-  // Resolve pinned message objects for the banner
-  const pinnedMessages: DisplayMessage[] = listData.filter(
-    (item) => pinnedMessageIds.has(item.id) && !isDietCard(item)
-  ) as DisplayMessage[];
+  // Resolve pinned items for the banner (messages + diet cards)
+  const pinnedItems: FlatListItem[] = listData.filter(
+    (item) => pinnedMessageIds.has(item.id)
+  );
+
+  // ── Swipe to reply handler ─────────────────────────────────
+  const handleSwipeReply = useCallback((item: DisplayMessage) => {
+    setReplyToMessage(item);
+    inputRef.current?.focus();
+  }, []);
 
   // ── Logout handler ─────────────────────────────────────────
   const handleLogout = async () => {
@@ -697,14 +935,15 @@ export default function ChatScreen() {
     setTimeout(() => {
       setShowTypingIndicator(false);
 
+      const botMsgId = Crypto.randomUUID();
       const botMsg: DisplayMessage = {
-        id: `bot-${Date.now()}`,
+        id: botMsgId,
         role: "assistant",
         content: nextText,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, botMsg]);
-      saveMessage("assistant", nextText);
+      saveMessage("assistant", nextText, botMsgId);
       setCurrentBubbleText(nextText);
       scrollToEnd();
     }, 700);
@@ -721,20 +960,29 @@ export default function ChatScreen() {
 
   // ── Send message ───────────────────────────────────────────
   const handleSend = async (text?: string) => {
-    const content = (text ?? input).trim();
-    if (!content || isLoading) return;
+    const rawContent = (text ?? input).trim();
+    if (!rawContent || isLoading) return;
 
     Keyboard.dismiss();
     setShowFoodPrompt(false);
     setShowWaterPrompt(false);
 
+    // Prepend quoted reply text for AI context
+    const replyRef = replyToMessage;
+    const content = replyRef
+      ? `> ${replyRef.content.slice(0, 120)}\n\n${rawContent}`
+      : rawContent;
+
+    const userMsgId = Crypto.randomUUID();
     const userMsg: DisplayMessage = {
-      id: Date.now().toString(),
+      id: userMsgId,
       role: "user",
-      content,
+      content: rawContent,
       created_at: new Date().toISOString(),
+      replyTo: replyRef ? { id: replyRef.id, content: replyRef.content.slice(0, 80) } : undefined,
     };
 
+    setReplyToMessage(null);
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
@@ -742,8 +990,8 @@ export default function ChatScreen() {
     setCurrentBubbleText(null);
     forceScrollToEnd();
 
-    ensureConversation(content);
-    saveMessage("user", content);
+    ensureConversation(rawContent);
+    saveMessage("user", content, userMsgId);
 
     const messageHistory = messages.slice(-10).map((m) => ({
       role: m.role as "user" | "assistant",
@@ -773,7 +1021,7 @@ export default function ChatScreen() {
       setShowTypingIndicator(false);
       setIsLoading(false);
       const errMsg: DisplayMessage = {
-        id: `err-${Date.now()}`,
+        id: Crypto.randomUUID(),
         role: "assistant",
         content: "arre yaar connection issue lag raha hai \uD83D\uDE05 internet check karke try again?",
         created_at: new Date().toISOString(),
@@ -819,8 +1067,9 @@ export default function ChatScreen() {
       setShowTypingIndicator(true);
 
       // Add user message to chat
+      const foodUserMsgId = Crypto.randomUUID();
       const userMsg: DisplayMessage = {
-        id: Date.now().toString(),
+        id: foodUserMsgId,
         role: "user",
         content: `I ate: ${food}`,
         created_at: new Date().toISOString(),
@@ -828,7 +1077,7 @@ export default function ChatScreen() {
       setMessages((prev) => [...prev, userMsg]);
       forceScrollToEnd();
       ensureConversation(food);
-      saveMessage("user", `I ate: ${food}`);
+      saveMessage("user", `I ate: ${food}`, foodUserMsgId);
 
       const result = await analyzeFoodFromText(food);
       await saveFoodLog(userId, result);
@@ -836,20 +1085,21 @@ export default function ChatScreen() {
       setShowTypingIndicator(false);
 
       const confirmText = `Logged: ${result.food_name} \u2014 ${result.calories} cal, ${result.protein_g}g P, ${result.carbs_g}g C, ${result.fat_g}g F \u2705`;
+      const foodBotMsgId = Crypto.randomUUID();
       const botMsg: DisplayMessage = {
-        id: `bot-${Date.now()}`,
+        id: foodBotMsgId,
         role: "assistant",
         content: confirmText,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, botMsg]);
-      saveMessage("assistant", confirmText);
+      saveMessage("assistant", confirmText, foodBotMsgId);
       setCurrentBubbleText(confirmText);
       scrollToEnd();
     } catch {
       setShowTypingIndicator(false);
       const errMsg: DisplayMessage = {
-        id: `err-${Date.now()}`,
+        id: Crypto.randomUUID(),
         role: "assistant",
         content: "arre yaar food analyze nahi ho paya \uD83D\uDE05 try again?",
         created_at: new Date().toISOString(),
@@ -871,21 +1121,22 @@ export default function ChatScreen() {
       setShowTypingIndicator(false);
 
       const confirmText = `Logged: ${result.food_name} \u2014 ${result.calories} cal, ${result.protein_g}g P, ${result.carbs_g}g C, ${result.fat_g}g F \u2705`;
+      const analyzeBotId = Crypto.randomUUID();
       const botMsg: DisplayMessage = {
-        id: `bot-${Date.now()}`,
+        id: analyzeBotId,
         role: "assistant",
         content: confirmText,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, botMsg]);
       ensureConversation(result.food_name);
-      saveMessage("assistant", confirmText);
+      saveMessage("assistant", confirmText, analyzeBotId);
       setCurrentBubbleText(confirmText);
       scrollToEnd();
     } catch {
       setShowTypingIndicator(false);
       const errMsg: DisplayMessage = {
-        id: `err-${Date.now()}`,
+        id: Crypto.randomUUID(),
         role: "assistant",
         content: "food save nahi ho paya bhai \uD83D\uDE15 try again?",
         created_at: new Date().toISOString(),
@@ -949,15 +1200,16 @@ export default function ChatScreen() {
         </View>
 
         {/* Pinned message banners */}
-        {pinnedMessages.length > 0 && (
+        {pinnedItems.length > 0 && (
           <PinnedBanner
-            messages={pinnedMessages}
+            items={pinnedItems}
             onTap={handleScrollToPinned}
             onUnpin={handleUnpinMessage}
           />
         )}
 
-        {/* Messages */}
+        {/* Messages + FAB container */}
+        <View style={{ flex: 1 }}>
         <FlatList
           ref={flatListRef}
           data={listData}
@@ -968,6 +1220,8 @@ export default function ChatScreen() {
                 <DietPlanCardComponent
                   plan={item.plan}
                   onPersonalize={!item.plan.is_personalized ? handlePersonalize : undefined}
+                  onLongPress={() => handlePinMessage(item.id)}
+                  isPinned={pinnedMessageIds.has(item.id)}
                 />
               );
             }
@@ -985,12 +1239,15 @@ export default function ChatScreen() {
               );
             }
 
+            const msgItem = item as DisplayMessage;
             return (
-              <MessageBubble
-                item={item as DisplayMessage}
-                isPinned={pinnedMessageIds.has(item.id)}
-                onLongPress={() => handlePinMessage(item.id)}
-              />
+              <SwipeableMessage onSwipeReply={() => handleSwipeReply(msgItem)}>
+                <MessageBubble
+                  item={msgItem}
+                  isPinned={pinnedMessageIds.has(item.id)}
+                  onLongPress={() => handlePinMessage(item.id)}
+                />
+              </SwipeableMessage>
             );
           }}
           contentContainerStyle={{
@@ -1014,6 +1271,10 @@ export default function ChatScreen() {
           }}
         />
 
+        {/* Draggable Floating Log Food FAB — shown once chat has started */}
+        {messages.length > 1 && <DraggableFAB onPress={() => setShowFoodLogModal(true)} />}
+        </View>
+
         {/* Typing indicator */}
         {showTypingIndicator && <TypingIndicator />}
 
@@ -1036,26 +1297,57 @@ export default function ChatScreen() {
           style={{ paddingBottom: insets.bottom + 4 }}
           className="border-t border-[#151515] bg-brand-dark"
         >
-          {/* Quick chips */}
-          <View className="flex-row px-4 pt-2.5 pb-2">
-            {QUICK_ACTIONS.map((action) => (
-              <Pressable
-                key={action.label}
-                onPress={() => handleQuickAction(action.label)}
-                disabled={isLoading}
-                className="bg-[#111] border border-[#1C1C1C] rounded-full px-3 py-1.5 mr-1.5 active:opacity-60"
-              >
-                <Text className="text-[12px] text-[#777] font-dm">
-                  {action.icon} {action.label}
+          {/* Quick chips — hidden once chat has started */}
+          {messages.length <= 1 && (
+            <View className="flex-row px-4 pt-2.5 pb-2">
+              {QUICK_ACTIONS.map((action) => (
+                <Pressable
+                  key={action.label}
+                  onPress={() => handleQuickAction(action.label)}
+                  disabled={isLoading}
+                  className="bg-[#111] border border-[#1C1C1C] rounded-full px-3 py-1.5 mr-1.5 active:opacity-60"
+                >
+                  <Text className="text-[12px] text-[#777] font-dm">
+                    {action.icon} {action.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {/* Reply preview bar */}
+          {replyToMessage && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#161616",
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderLeftWidth: 3,
+              borderLeftColor: "#A8FF3E",
+              marginHorizontal: 16,
+              marginBottom: 4,
+              borderRadius: 8,
+            }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: "#A8FF3E", fontSize: 11, fontWeight: "600", marginBottom: 2 }}>
+                  Replying to
                 </Text>
+                <Text style={{ color: "#999", fontSize: 13 }} numberOfLines={1}>
+                  {replyToMessage.content}
+                </Text>
+              </View>
+              <Pressable onPress={() => setReplyToMessage(null)} hitSlop={8}>
+                <Text style={{ color: "#666", fontSize: 18, marginLeft: 12 }}>{"\u2715"}</Text>
               </Pressable>
-            ))}
-          </View>
+            </View>
+          )}
 
           {/* Input */}
           <View className="px-4 pb-1.5">
             <View className="flex-row items-end bg-[#111] rounded-full border border-[#1C1C1C] pl-4 pr-1.5 py-0.5">
               <TextInput
+                ref={inputRef}
                 value={input}
                 onChangeText={setInput}
                 placeholder="Message..."

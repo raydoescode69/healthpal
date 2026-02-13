@@ -297,9 +297,50 @@ export function parseResponse(raw: string): ParsedBotResponse {
     .trim();
 
   // Split by ||| delimiter into bubbles
-  const bubbles = textContent
+  let bubbles = textContent
     .split("|||")
     .map((b) => b.trim())
+    .filter((b) => b.length > 0);
+
+  // Strategy 4: Check individual bubbles for embedded DIET_PLAN JSON
+  if (!dietPlan) {
+    for (let i = 0; i < bubbles.length; i++) {
+      const bubble = bubbles[i];
+      if (bubble.includes('"type"') && bubble.includes('DIET_PLAN')) {
+        const jsonMatch = bubble.match(/(\{[\s\S]*"type"\s*:\s*"DIET_PLAN"[\s\S]*)/);
+        if (jsonMatch) {
+          const fragment = jsonMatch[1];
+          let depth = 0;
+          let jsonEnd = -1;
+          for (let j = 0; j < fragment.length; j++) {
+            if (fragment[j] === "{") depth++;
+            else if (fragment[j] === "}") {
+              depth--;
+              if (depth === 0) { jsonEnd = j; break; }
+            }
+          }
+          if (jsonEnd !== -1) {
+            try {
+              const cleaned = fragment.slice(0, jsonEnd + 1).replace(/[\n\r\t]/g, "").replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+              dietPlan = JSON.parse(cleaned) as DietPlanData;
+              // Remove the JSON from this bubble, keep any preceding text
+              const beforeJson = bubble.slice(0, bubble.indexOf(jsonMatch[1])).trim();
+              if (beforeJson) {
+                bubbles[i] = beforeJson;
+              } else {
+                bubbles.splice(i, 1);
+              }
+              break;
+            } catch {}
+          }
+        }
+      }
+    }
+  }
+
+  // Clean any leftover JSON fragments from text bubbles
+  bubbles = bubbles
+    .map((b) => b.replace(/\{[\s\S]*"type"\s*:\s*"DIET_PLAN"[\s\S]*\}/g, "").trim())
     .filter((b) => b.length > 0);
 
   return { bubbles, dietPlan };

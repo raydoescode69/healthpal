@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   FlatList,
   ActivityIndicator,
 } from "react-native";
+import { Calendar, DateData } from "react-native-calendars";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "../../store/useAuthStore";
@@ -26,6 +27,18 @@ function formatTime(dateStr: string): string {
   const ampm = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 || 12;
   return `${h12}:${m} ${ampm}`;
+}
+
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDateHeader(dateStr: string): string {
+  const today = toDateStr(new Date());
+  if (dateStr === today) return "Today's Nutrition";
+  const d = new Date(dateStr + "T00:00:00");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${d.getDate()} ${months[d.getMonth()]} Nutrition`;
 }
 
 function calculateTargets(profile: any) {
@@ -131,21 +144,126 @@ function FoodLogRow({ item }: { item: FoodLog }) {
   );
 }
 
+// ── Calendar theme (dark mode matching app) ─────────────────────
+const CALENDAR_THEME = {
+  backgroundColor: "transparent",
+  calendarBackground: "transparent",
+  textSectionTitleColor: "#666",
+  selectedDayBackgroundColor: "#A8FF3E",
+  selectedDayTextColor: "#000",
+  todayTextColor: "#A8FF3E",
+  todayBackgroundColor: "#1A2E0A",
+  dayTextColor: "#ccc",
+  textDisabledColor: "#333",
+  dotColor: "#A8FF3E",
+  selectedDotColor: "#000",
+  arrowColor: "#A8FF3E",
+  monthTextColor: "#fff",
+  textMonthFontWeight: "700" as const,
+  textMonthFontSize: 16,
+  textDayFontSize: 14,
+  textDayHeaderFontSize: 12,
+  textDayFontWeight: "500" as const,
+  textDayHeaderFontWeight: "600" as const,
+  "stylesheet.calendar.header": {
+    week: {
+      flexDirection: "row" as const,
+      justifyContent: "space-around" as const,
+      marginTop: 4,
+      marginBottom: 4,
+    },
+  },
+};
+
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
-  const { foodLogs, isLoading, loadTodayLogs, getDailySummary } =
-    useTrackingStore();
+  const {
+    foodLogs,
+    isLoading,
+    loadTodayLogs,
+    loadLogsForDate,
+    loadLoggedDates,
+    selectedDate,
+    loggedDates,
+    getDailySummary,
+  } = useTrackingStore();
+
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const userId = session?.user?.id || "";
   const targets = calculateTargets(profile);
   const summary = getDailySummary();
+  const todayDateStr = toDateStr(new Date());
 
+  // Load today's logs + current month's logged dates on mount
   useEffect(() => {
-    if (userId) loadTodayLogs(userId);
+    if (!userId) return;
+    loadTodayLogs(userId);
+    const now = new Date();
+    loadLoggedDates(userId, now.getFullYear(), now.getMonth() + 1);
   }, [userId]);
+
+  const handleDayPress = useCallback((day: DateData) => {
+    if (!userId) return;
+    const dateStr = day.dateString;
+    if (dateStr === todayDateStr) {
+      loadTodayLogs(userId);
+    } else {
+      loadLogsForDate(userId, dateStr);
+    }
+    setCalendarOpen(false);
+  }, [userId, todayDateStr, loadTodayLogs, loadLogsForDate]);
+
+  const handleMonthChange = useCallback((month: DateData) => {
+    if (!userId) return;
+    const y = month.year;
+    const m = month.month;
+    loadLoggedDates(userId, y, m);
+  }, [userId, loadLoggedDates]);
+
+  // Build marked dates for the calendar
+  const markedDates = useMemo(() => {
+    const marks: Record<string, any> = {};
+
+    // Mark all dates that have food logs with a dot
+    loggedDates.forEach((dateStr) => {
+      marks[dateStr] = {
+        marked: true,
+        dotColor: "#A8FF3E",
+      };
+    });
+
+    // Mark selected date
+    if (marks[selectedDate]) {
+      marks[selectedDate] = {
+        ...marks[selectedDate],
+        selected: true,
+        selectedColor: "#A8FF3E",
+        selectedTextColor: "#000",
+      };
+    } else {
+      marks[selectedDate] = {
+        selected: true,
+        selectedColor: "#A8FF3E",
+        selectedTextColor: "#000",
+      };
+    }
+
+    // Mark today if not selected
+    if (todayDateStr !== selectedDate) {
+      if (marks[todayDateStr]) {
+        marks[todayDateStr] = {
+          ...marks[todayDateStr],
+          today: true,
+        };
+      }
+    }
+
+    return marks;
+  }, [loggedDates, selectedDate, todayDateStr]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
@@ -173,19 +291,68 @@ export default function DashboardScreen() {
         >
           <Text style={{ color: "#888", fontSize: 22 }}>{"\u2190"}</Text>
         </Pressable>
-        <Text
+        <Pressable
+          onPress={() => setCalendarOpen((v) => !v)}
+          style={{ flex: 1, alignItems: "center" }}
+        >
+          <Text
+            style={{
+              color: "#fff",
+              fontSize: 17,
+              fontWeight: "600",
+            }}
+          >
+            {formatDateHeader(selectedDate)}
+          </Text>
+          <Text style={{ color: "#A8FF3E", fontSize: 11, marginTop: 2 }}>
+            {calendarOpen ? "Tap to close" : "Tap for calendar"} {calendarOpen ? "\u25B2" : "\u25BC"}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            if (userId) loadTodayLogs(userId);
+            setCalendarOpen(false);
+          }}
           style={{
-            flex: 1,
-            textAlign: "center",
-            color: "#fff",
-            fontSize: 17,
-            fontWeight: "600",
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          Today's Nutrition
-        </Text>
-        <View style={{ width: 36 }} />
+          <Text style={{ color: selectedDate === todayDateStr ? "#555" : "#A8FF3E", fontSize: 12, fontWeight: "700" }}>
+            Today
+          </Text>
+        </Pressable>
       </View>
+
+      {/* Expandable Calendar */}
+      {calendarOpen && (
+        <View style={{ backgroundColor: "#111", borderBottomWidth: 1, borderBottomColor: "#1C1C1C", paddingBottom: 8 }}>
+          <Calendar
+            current={selectedDate}
+            onDayPress={handleDayPress}
+            onMonthChange={handleMonthChange}
+            markedDates={markedDates}
+            maxDate={todayDateStr}
+            theme={CALENDAR_THEME}
+            enableSwipeMonths
+            hideExtraDays
+          />
+          {/* Legend */}
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, paddingTop: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#A8FF3E", marginRight: 4 }} />
+              <Text style={{ color: "#666", fontSize: 11 }}>Food logged</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#333", marginRight: 4 }} />
+              <Text style={{ color: "#666", fontSize: 11 }}>No data</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       <FlatList
         data={foodLogs}
@@ -363,7 +530,9 @@ export default function DashboardScreen() {
             <View style={{ paddingVertical: 40, alignItems: "center", paddingHorizontal: 32 }}>
               <Text style={{ fontSize: 40, marginBottom: 12 }}>{"\uD83C\uDF7D\uFE0F"}</Text>
               <Text style={{ color: "#555", fontSize: 15, textAlign: "center" }}>
-                No food logged yet today
+                {selectedDate === todayDateStr
+                  ? "No food logged yet today"
+                  : "No food logged on this day"}
               </Text>
               <Text style={{ color: "#444", fontSize: 13, textAlign: "center", marginTop: 4 }}>
                 Tap "Log Food" in chat to start tracking

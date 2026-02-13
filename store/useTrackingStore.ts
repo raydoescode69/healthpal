@@ -14,8 +14,13 @@ interface TrackingState {
   waterGlasses: number;
   isLoading: boolean;
   lastResetDate: string;
+  selectedDate: string;
+  loggedDates: Set<string>;
 
   loadTodayLogs: (userId: string) => Promise<void>;
+  loadLogsForDate: (userId: string, dateStr: string) => Promise<void>;
+  loadLoggedDates: (userId: string, year: number, month: number) => Promise<void>;
+  setSelectedDate: (dateStr: string) => void;
   saveFoodLog: (
     userId: string,
     result: FoodAnalysisResult,
@@ -42,9 +47,11 @@ export const useTrackingStore = create<TrackingState>()((set, get) => ({
   waterGlasses: 0,
   isLoading: false,
   lastResetDate: todayStr(),
+  selectedDate: todayStr(),
+  loggedDates: new Set<string>(),
 
   loadTodayLogs: async (userId: string) => {
-    set({ isLoading: true });
+    set({ isLoading: true, selectedDate: todayStr() });
     try {
       const { data, error } = await supabase
         .from("food_logs")
@@ -58,6 +65,51 @@ export const useTrackingStore = create<TrackingState>()((set, get) => ({
     } catch {
       set({ isLoading: false });
     }
+  },
+
+  loadLogsForDate: async (userId: string, dateStr: string) => {
+    set({ isLoading: true, selectedDate: dateStr });
+    try {
+      const dayStart = new Date(dateStr + "T00:00:00").toISOString();
+      const dayEnd = new Date(dateStr + "T23:59:59.999").toISOString();
+      const { data, error } = await supabase
+        .from("food_logs")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("logged_at", dayStart)
+        .lte("logged_at", dayEnd)
+        .order("logged_at", { ascending: true });
+
+      if (error) throw error;
+      set({ foodLogs: (data as FoodLog[]) || [], isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  loadLoggedDates: async (userId: string, year: number, month: number) => {
+    try {
+      const monthStart = new Date(year, month - 1, 1).toISOString();
+      const monthEnd = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
+      const { data, error } = await supabase
+        .from("food_logs")
+        .select("logged_at")
+        .eq("user_id", userId)
+        .gte("logged_at", monthStart)
+        .lte("logged_at", monthEnd);
+
+      if (error) throw error;
+
+      const dates = new Set<string>(get().loggedDates);
+      (data || []).forEach((row: { logged_at: string }) => {
+        dates.add(row.logged_at.slice(0, 10));
+      });
+      set({ loggedDates: dates });
+    } catch {}
+  },
+
+  setSelectedDate: (dateStr: string) => {
+    set({ selectedDate: dateStr });
   },
 
   saveFoodLog: async (

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import type { DietPlanData, DietMeal } from "../lib/types";
+import * as Haptics from "expo-haptics";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -72,9 +73,13 @@ function MealRow({ meal }: { meal: DietMeal }) {
 export default function DietPlanCard({
   plan,
   onPersonalize,
+  onLongPress,
+  isPinned,
 }: {
   plan: DietPlanData | null;
   onPersonalize?: () => void;
+  onLongPress?: () => void;
+  isPinned?: boolean;
 }) {
   const [selectedDay, setSelectedDay] = useState(0);
 
@@ -92,15 +97,30 @@ export default function DietPlanCard({
 
   return (
     <Animated.View entering={FadeIn.duration(400)} style={{ marginBottom: 12, marginHorizontal: 4 }}>
+      <Pressable
+        onLongPress={() => {
+          if (onLongPress) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onLongPress();
+          }
+        }}
+        delayLongPress={400}
+      >
       <View
         style={{
           backgroundColor: "#161616",
-          borderWidth: 1,
-          borderColor: "#2a5a2a",
+          borderWidth: isPinned ? 1.5 : 1,
+          borderColor: isPinned ? "#A8FF3E" : "#2a5a2a",
           borderRadius: 16,
           padding: 16,
         }}
       >
+        {/* Pinned indicator */}
+        {isPinned && (
+          <Text style={{ color: "#A8FF3E", fontSize: 10, marginBottom: 6 }}>
+            {"\uD83D\uDCCC"} Pinned
+          </Text>
+        )}
         {/* Header row */}
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>
@@ -224,6 +244,7 @@ export default function DietPlanCard({
           )}
         </View>
       </View>
+      </Pressable>
     </Animated.View>
   );
 }

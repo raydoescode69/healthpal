@@ -2,6 +2,7 @@ import "../global.css";
 import { useEffect } from "react";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as SplashScreen from "expo-splash-screen";
 import {
   useFonts,
@@ -78,9 +79,9 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <Slot />
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
-    </>
+    </GestureHandlerRootView>
   );
 }
