@@ -36,10 +36,10 @@ export interface Message {
 }
 
 export const QUICK_ACTIONS = [
-  { label: "Log Food", icon: "🍎" },
-  { label: "My Plan", icon: "📋" },
-  { label: "Motivate me", icon: "💪" },
-  { label: "Water intake", icon: "💧" },
+  { label: "Get Diet Plan", icon: "diet-plan" },
+  { label: "Track Calories", icon: "track-calories" },
+  { label: "Log Food", icon: "log-food" },
+  { label: "Order Food", icon: "order-food" },
 ] as const;
 
 export const DIET_TYPES = [
@@ -103,6 +103,10 @@ export interface FoodAnalysisResult {
   carbs_g: number;
   fat_g: number;
   meal_type: string;
+  confidence?: "high" | "medium" | "low";
+  confidence_score?: number;
+  portion_size?: string;
+  meal_items?: string[];
 }
 
 export interface ConversationItem {

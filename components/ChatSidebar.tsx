@@ -12,9 +12,12 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
 } from "react-native-reanimated";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { supabase } from "../lib/supabase";
+import { useThemeStore } from "../store/useThemeStore";
+import { THEMES } from "../lib/theme";
 import type { ConversationItem, UserProfile } from "../lib/types";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -31,11 +34,11 @@ interface ChatSidebarProps {
   onLogout: () => void;
 }
 
-const GOAL_DISPLAY: Record<string, { emoji: string; label: string }> = {
-  lose_weight: { emoji: "\uD83D\uDD25", label: "Lose Weight" },
-  gain_muscle: { emoji: "\uD83D\uDCAA", label: "Gain Muscle" },
-  eat_healthy: { emoji: "\uD83E\uDD57", label: "Eat Healthy" },
-  manage_stress: { emoji: "\uD83E\uDDD8", label: "Manage Stress" },
+const GOAL_DISPLAY: Record<string, string> = {
+  lose_weight: "Lose Weight",
+  gain_muscle: "Gain Muscle",
+  eat_healthy: "Eat Healthy",
+  manage_stress: "Manage Stress",
 };
 
 const DIET_DISPLAY: Record<string, string> = {
@@ -89,6 +92,8 @@ export default function ChatSidebar({
 }: ChatSidebarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const mode = useThemeStore((s) => s.mode);
+  const colors = THEMES[mode];
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
@@ -135,7 +140,7 @@ export default function ChatSidebar({
   if (!visible && !shouldRender) return null;
 
   const grouped = groupByDate(conversations);
-  const goalInfo = profile?.goal ? GOAL_DISPLAY[profile.goal] : null;
+  const goalLabel = profile?.goal ? GOAL_DISPLAY[profile.goal] : null;
   const dietLabel = profile?.diet_type ? DIET_DISPLAY[profile.diet_type] : null;
   const initial = profile?.name?.charAt(0)?.toUpperCase() || "?";
 
@@ -177,187 +182,186 @@ export default function ChatSidebar({
             left: 0,
             bottom: 0,
             width: SIDEBAR_WIDTH,
-            backgroundColor: "#111111",
-            borderRightWidth: 1,
-            borderRightColor: "#1F1F1F",
+            backgroundColor: colors.sidebarBg,
           },
           sidebarStyle,
         ]}
       >
-        {/* Profile section */}
-        <View style={{ paddingTop: insets.top + 16, paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: "#1F1F1F" }}>
+        {/* ── Profile section ── */}
+        <View style={{
+          paddingTop: insets.top + 20,
+          paddingHorizontal: 20,
+          paddingBottom: 20,
+        }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            {/* Avatar circle */}
             <View
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: "#1A2E0A",
+                width: 46,
+                height: 46,
+                borderRadius: 23,
+                backgroundColor: colors.accentDark,
                 alignItems: "center",
                 justifyContent: "center",
                 borderWidth: 1.5,
-                borderColor: "#A8FF3E",
+                borderColor: colors.accent,
               }}
             >
-              <Text style={{ color: "#A8FF3E", fontSize: 18, fontWeight: "bold" }}>
+              <Text style={{ color: colors.accent, fontSize: 18, fontWeight: "bold" }}>
                 {initial}
               </Text>
             </View>
-            <View style={{ marginLeft: 12, flex: 1 }}>
-              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "600" }} numberOfLines={1}>
+            <View style={{ marginLeft: 14, flex: 1 }}>
+              <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: "700" }} numberOfLines={1}>
                 {profile?.name || "User"}
               </Text>
-              {/* Goal + diet badges */}
-              <View style={{ flexDirection: "row", marginTop: 4, flexWrap: "wrap", gap: 6 }}>
-                {goalInfo && (
-                  <View style={{ backgroundColor: "#1A1A1A", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
-                    <Text style={{ color: "#999", fontSize: 11 }}>
-                      {goalInfo.emoji} {goalInfo.label}
-                    </Text>
-                  </View>
-                )}
-                {dietLabel && (
-                  <View style={{ backgroundColor: "#1A1A1A", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
-                    <Text style={{ color: "#999", fontSize: 11 }}>
-                      {dietLabel}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              {(goalLabel || dietLabel) && (
+                <Text style={{ color: colors.subText, fontSize: 12, marginTop: 3 }} numberOfLines={1}>
+                  {[goalLabel, dietLabel].filter(Boolean).join("  \u00B7  ")}
+                </Text>
+              )}
             </View>
           </View>
         </View>
 
-        {/* New Chat button */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 }}>
+        {/* ── Action buttons ── */}
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 8 }}>
+          {/* New Chat */}
           <Pressable
-            onPress={() => {
-              onNewChat();
-              onClose();
-            }}
+            onPress={() => { onNewChat(); onClose(); }}
             style={({ pressed }) => ({
-              backgroundColor: pressed ? "#333" : "#2A2A2A",
+              backgroundColor: pressed ? colors.accentDark : colors.sidebarButtonBg,
               borderRadius: 12,
-              paddingVertical: 14,
-              alignItems: "center",
-              borderWidth: 1,
-              borderColor: "#3A3A3A",
+              paddingVertical: 13,
+              paddingHorizontal: 16,
             })}
           >
-            <Text style={{ color: "#ddd", fontWeight: "700", fontSize: 15 }}>
-              + New Chat
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 22, alignItems: "center" }}>
+                <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+              </View>
+              <Text style={{ color: colors.textSecondary, fontWeight: "600", fontSize: 14, marginLeft: 10 }}>
+                New Chat
+              </Text>
+            </View>
+          </Pressable>
+
+          {/* Dashboard */}
+          <Pressable
+            onPress={() => { router.push("/(main)/dashboard"); onClose(); }}
+            style={({ pressed }) => ({
+              backgroundColor: pressed ? colors.sidebarButtonPressBg : colors.sidebarButtonBg,
+              borderRadius: 12,
+              paddingVertical: 13,
+              paddingHorizontal: 16,
+            })}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 22, alignItems: "center" }}>
+                <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
+              </View>
+              <Text style={{ color: colors.textSecondary, fontWeight: "500", fontSize: 14, marginLeft: 10, flex: 1 }}>
+                Dashboard
+              </Text>
+              <View style={{ width: 18, alignItems: "center" }}>
+                <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
+              </View>
+            </View>
           </Pressable>
         </View>
 
-        {/* Divider */}
-        <View style={{ height: 1, backgroundColor: "#1F1F1F", marginHorizontal: 16 }} />
+        {/* ── Separator ── */}
+        <View style={{ height: 1, backgroundColor: colors.separator, marginHorizontal: 20 }} />
 
-        {/* Dashboard link */}
-        <Pressable
-          onPress={() => {
-            router.push("/(main)/dashboard");
-            onClose();
-          }}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginHorizontal: 16,
-            marginTop: 14,
-            marginBottom: 6,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            borderRadius: 10,
-            backgroundColor: pressed ? "#1A1A1A" : "transparent",
-          })}
-        >
-          <Text style={{ color: "#ccc", fontWeight: "500", fontSize: 14 }}>
-            Dashboard
-          </Text>
-          <Text style={{ color: "#555", fontSize: 16 }}>{"\u203A"}</Text>
-        </Pressable>
-
-        {/* Divider */}
-        <View style={{ height: 1, backgroundColor: "#1F1F1F", marginHorizontal: 16, marginTop: 8, marginBottom: 4 }} />
-
-        {/* Chat history header with count */}
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
-          <Text style={{ color: "#777", fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Chat History
+        {/* ── Chat history header ── */}
+        <View style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 20,
+          paddingTop: 16,
+          paddingBottom: 10,
+        }}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 }}>
+            Conversations
           </Text>
           {conversations.length > 0 && (
-            <View style={{ backgroundColor: "#1A2E0A", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
-              <Text style={{ color: "#A8FF3E", fontSize: 11, fontWeight: "600" }}>
-                {conversations.length}
-              </Text>
-            </View>
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "600" }}>
+              {conversations.length}
+            </Text>
           )}
         </View>
 
-        {/* Conversations list */}
+        {/* ── Conversations list ── */}
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
           {loading ? (
-            <View style={{ paddingVertical: 32, alignItems: "center" }}>
-              <ActivityIndicator color="#A8FF3E" size="small" />
+            <View style={{ paddingVertical: 40, alignItems: "center" }}>
+              <ActivityIndicator color={colors.accent} size="small" />
             </View>
           ) : conversations.length === 0 ? (
-            <View style={{ paddingVertical: 32, alignItems: "center", paddingHorizontal: 24 }}>
-              <Text style={{ color: "#444", fontSize: 13, textAlign: "center" }}>
-                No conversations yet. Start chatting!
+            <View style={{ paddingVertical: 40, alignItems: "center", paddingHorizontal: 24 }}>
+              <Text style={{ color: colors.textFaint, fontSize: 13, textAlign: "center" }}>
+                No conversations yet.{"\n"}Start chatting!
               </Text>
             </View>
           ) : (
-            grouped.map((group) => (
-              <View key={group.label} style={{ marginTop: 16 }}>
-                <Text style={{ color: "#666", fontSize: 12, fontWeight: "700", textTransform: "uppercase", paddingHorizontal: 20, marginBottom: 8, letterSpacing: 0.8 }}>
+            grouped.map((group, groupIdx) => (
+              <View key={group.label} style={{ marginBottom: 12 }}>
+                {groupIdx > 0 && (
+                  <View style={{ height: 1, backgroundColor: colors.separator, marginHorizontal: 20, marginBottom: 4 }} />
+                )}
+                <Text style={{
+                  color: colors.textFaint,
+                  fontSize: 11,
+                  fontWeight: "700",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  paddingHorizontal: 20,
+                  paddingTop: 16,
+                  paddingBottom: 10,
+                }}>
                   {group.label}
                 </Text>
-                {group.items.map((conv, idx) => {
+                {group.items.map((conv) => {
                   const isActive = conv.id === currentConversationId;
-                  const displayTitle =
-                    (conv.title || "New conversation").length > 34
-                      ? (conv.title || "New conversation").slice(0, 34) + "..."
-                      : conv.title || "New conversation";
+                  const title = conv.title || "New conversation";
+                  const displayTitle = title.length > 30 ? title.slice(0, 30) + "..." : title;
                   return (
-                    <View key={conv.id}>
-                      <Pressable
-                        onPress={() => {
-                          onSelectConversation(conv);
-                          onClose();
-                        }}
-                        style={({ pressed }) => ({
-                          marginHorizontal: 10,
-                          paddingHorizontal: 16,
-                          paddingVertical: 14,
-                          borderRadius: 10,
-                          backgroundColor: isActive ? "#1a2e0a" : pressed ? "#1A1A1A" : "transparent",
-                          borderLeftWidth: isActive ? 3 : 0,
-                          borderLeftColor: "#A8FF3E",
-                          flexDirection: "row",
-                          alignItems: "center",
-                        })}
-                      >
-                        <Text style={{ color: isActive ? "#A8FF3E" : "#555", fontSize: 14, marginRight: 10 }}>
-                          {"\uD83D\uDCAC"}
-                        </Text>
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{ color: isActive ? "#fff" : "#ccc", fontSize: 15, fontWeight: "500" }}
-                            numberOfLines={1}
-                          >
-                            {displayTitle}
-                          </Text>
-                          <Text style={{ color: "#555", fontSize: 11, marginTop: 3 }}>
-                            {formatDate(conv.created_at)}
-                          </Text>
+                    <Pressable
+                      key={conv.id}
+                      onPress={() => { onSelectConversation(conv); onClose(); }}
+                      style={({ pressed }) => ({
+                        marginHorizontal: 12,
+                        marginVertical: 3,
+                        paddingHorizontal: 14,
+                        paddingVertical: 13,
+                        borderRadius: 10,
+                        backgroundColor: isActive ? colors.sidebarItemActiveBg : pressed ? colors.sidebarButtonBg : "transparent",
+                      })}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <View style={{ width: 20, marginRight: 10, alignItems: "center", justifyContent: "center" }}>
+                          <Ionicons
+                            name={isActive ? "chatbubble" : "chatbubble-outline"}
+                            size={14}
+                            color={isActive ? colors.accent : colors.textFaint}
+                          />
                         </View>
-                      </Pressable>
-                      {idx < group.items.length - 1 && (
-                        <View style={{ height: 1, backgroundColor: "#1A1A1A", marginHorizontal: 26 }} />
-                      )}
-                    </View>
+                        <Text
+                          style={{
+                            flex: 1,
+                            color: isActive ? colors.pinnedText : colors.textSecondary,
+                            fontSize: 14,
+                            fontWeight: isActive ? "600" : "400",
+                          }}
+                          numberOfLines={1}
+                        >
+                          {displayTitle}
+                        </Text>
+                        <Text style={{ color: colors.textFaint, fontSize: 10, marginLeft: 8 }}>
+                          {formatDate(conv.created_at)}
+                        </Text>
+                      </View>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -366,23 +370,30 @@ export default function ChatSidebar({
           <View style={{ height: 20 }} />
         </ScrollView>
 
-        {/* Logout button at bottom */}
-        <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#1F1F1F" }}>
+        {/* ── Sign out ── */}
+        <View style={{
+          paddingHorizontal: 16,
+          paddingBottom: insets.bottom + 16,
+          paddingTop: 12,
+          borderTopWidth: 1,
+          borderTopColor: colors.separator,
+        }}>
           <Pressable
-            onPress={() => {
-              onLogout();
-              onClose();
-            }}
+            onPress={() => { onLogout(); onClose(); }}
             style={({ pressed }) => ({
               paddingVertical: 12,
               borderRadius: 12,
-              alignItems: "center",
-              backgroundColor: pressed ? "#2a1a1a" : "#1A1A1A",
+              backgroundColor: pressed ? colors.dangerBg : colors.widgetBg,
             })}
           >
-            <Text style={{ color: "#E57373", fontWeight: "600", fontSize: 14 }}>
-              Sign Out
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+              <View style={{ width: 20, alignItems: "center", marginRight: 8 }}>
+                <Ionicons name="log-out-outline" size={16} color={colors.danger} />
+              </View>
+              <Text style={{ color: colors.danger, fontWeight: "600", fontSize: 14 }}>
+                Sign Out
+              </Text>
+            </View>
           </Pressable>
         </View>
       </Animated.View>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Alert, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { supabase } from "../../lib/supabase";
@@ -59,6 +59,11 @@ export default function LoginScreen() {
   };
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1"
+    >
     <View className="flex-1 bg-brand-dark items-center justify-center px-8">
       <Animated.View entering={FadeIn.duration(800)} className="items-center">
         <Text className="text-5xl text-white font-sora-bold tracking-tight">
@@ -114,5 +119,7 @@ export default function LoginScreen() {
         </TouchableOpacity>
       </Animated.View>
     </View>
+    </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }

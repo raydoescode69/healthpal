@@ -11,6 +11,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useTrackingStore } from "../../store/useTrackingStore";
+import { useThemeStore } from "../../store/useThemeStore";
+import { THEMES, type ThemeColors } from "../../lib/theme";
 import type { FoodLog } from "../../lib/types";
 
 const MEAL_EMOJI: Record<string, string> = {
@@ -69,17 +71,19 @@ function ProgressBar({
   current,
   target,
   color,
+  trackColor,
 }: {
   current: number;
   target: number;
   color: string;
+  trackColor: string;
 }) {
   const pct = Math.min((current / target) * 100, 100);
   return (
     <View
       style={{
         height: 6,
-        backgroundColor: "#1A1A1A",
+        backgroundColor: trackColor,
         borderRadius: 3,
         overflow: "hidden",
         marginTop: 6,
@@ -97,7 +101,7 @@ function ProgressBar({
   );
 }
 
-function FoodLogRow({ item }: { item: FoodLog }) {
+function FoodLogRow({ item, colors }: { item: FoodLog; colors: ThemeColors }) {
   return (
     <View
       style={{
@@ -106,21 +110,23 @@ function FoodLogRow({ item }: { item: FoodLog }) {
         paddingVertical: 12,
         paddingHorizontal: 16,
         borderBottomWidth: 1,
-        borderBottomColor: "#1A1A1A",
+        borderBottomColor: colors.separator,
       }}
     >
-      <Text style={{ fontSize: 24, marginRight: 12 }}>
-        {MEAL_EMOJI[item.meal_type] || "\uD83C\uDF7D\uFE0F"}
-      </Text>
+      <View style={{ width: 32, marginRight: 12, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ fontSize: 24 }}>
+          {MEAL_EMOJI[item.meal_type] || "\uD83C\uDF7D\uFE0F"}
+        </Text>
+      </View>
       <View style={{ flex: 1 }}>
         <Text
-          style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}
+          style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500" }}
           numberOfLines={1}
         >
           {item.food_name}
         </Text>
         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
-          <Text style={{ color: "#666", fontSize: 11 }}>
+          <Text style={{ color: colors.subText, fontSize: 11 }}>
             {formatTime(item.logged_at)}
           </Text>
           <View style={{ flexDirection: "row", marginLeft: 10, gap: 6 }}>
@@ -136,50 +142,53 @@ function FoodLogRow({ item }: { item: FoodLog }) {
           </View>
         </View>
       </View>
-      <Text style={{ color: "#A8FF3E", fontSize: 15, fontWeight: "700" }}>
+      <Text style={{ color: colors.accent, fontSize: 15, fontWeight: "700" }}>
         {item.calories}
       </Text>
-      <Text style={{ color: "#666", fontSize: 11, marginLeft: 2 }}>cal</Text>
+      <Text style={{ color: colors.subText, fontSize: 11, marginLeft: 2 }}>cal</Text>
     </View>
   );
 }
 
-// ── Calendar theme (dark mode matching app) ─────────────────────
-const CALENDAR_THEME = {
-  backgroundColor: "transparent",
-  calendarBackground: "transparent",
-  textSectionTitleColor: "#666",
-  selectedDayBackgroundColor: "#A8FF3E",
-  selectedDayTextColor: "#000",
-  todayTextColor: "#A8FF3E",
-  todayBackgroundColor: "#1A2E0A",
-  dayTextColor: "#ccc",
-  textDisabledColor: "#333",
-  dotColor: "#A8FF3E",
-  selectedDotColor: "#000",
-  arrowColor: "#A8FF3E",
-  monthTextColor: "#fff",
-  textMonthFontWeight: "700" as const,
-  textMonthFontSize: 16,
-  textDayFontSize: 14,
-  textDayHeaderFontSize: 12,
-  textDayFontWeight: "500" as const,
-  textDayHeaderFontWeight: "600" as const,
-  "stylesheet.calendar.header": {
-    week: {
-      flexDirection: "row" as const,
-      justifyContent: "space-around" as const,
-      marginTop: 4,
-      marginBottom: 4,
+function getCalendarTheme(colors: ThemeColors) {
+  return {
+    backgroundColor: "transparent",
+    calendarBackground: "transparent",
+    textSectionTitleColor: colors.subText,
+    selectedDayBackgroundColor: colors.accent,
+    selectedDayTextColor: "#000",
+    todayTextColor: colors.accent,
+    todayBackgroundColor: colors.accentDark,
+    dayTextColor: colors.textSecondary,
+    textDisabledColor: colors.textFaint,
+    dotColor: colors.accent,
+    selectedDotColor: "#000",
+    arrowColor: colors.accent,
+    monthTextColor: colors.textPrimary,
+    textMonthFontWeight: "700" as const,
+    textMonthFontSize: 16,
+    textDayFontSize: 14,
+    textDayHeaderFontSize: 12,
+    textDayFontWeight: "500" as const,
+    textDayHeaderFontWeight: "600" as const,
+    "stylesheet.calendar.header": {
+      week: {
+        flexDirection: "row" as const,
+        justifyContent: "space-around" as const,
+        marginTop: 4,
+        marginBottom: 4,
+      },
     },
-  },
-};
+  };
+}
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
+  const mode = useThemeStore((s) => s.mode);
+  const colors = THEMES[mode];
   const {
     foodLogs,
     isLoading,
@@ -197,6 +206,7 @@ export default function DashboardScreen() {
   const targets = calculateTargets(profile);
   const summary = getDailySummary();
   const todayDateStr = toDateStr(new Date());
+  const calendarTheme = useMemo(() => getCalendarTheme(colors), [mode]);
 
   // Load today's logs + current month's logged dates on mount
   useEffect(() => {
@@ -228,31 +238,28 @@ export default function DashboardScreen() {
   const markedDates = useMemo(() => {
     const marks: Record<string, any> = {};
 
-    // Mark all dates that have food logs with a dot
     loggedDates.forEach((dateStr) => {
       marks[dateStr] = {
         marked: true,
-        dotColor: "#A8FF3E",
+        dotColor: colors.accent,
       };
     });
 
-    // Mark selected date
     if (marks[selectedDate]) {
       marks[selectedDate] = {
         ...marks[selectedDate],
         selected: true,
-        selectedColor: "#A8FF3E",
+        selectedColor: colors.accent,
         selectedTextColor: "#000",
       };
     } else {
       marks[selectedDate] = {
         selected: true,
-        selectedColor: "#A8FF3E",
+        selectedColor: colors.accent,
         selectedTextColor: "#000",
       };
     }
 
-    // Mark today if not selected
     if (todayDateStr !== selectedDate) {
       if (marks[todayDateStr]) {
         marks[todayDateStr] = {
@@ -263,10 +270,10 @@ export default function DashboardScreen() {
     }
 
     return marks;
-  }, [loggedDates, selectedDate, todayDateStr]);
+  }, [loggedDates, selectedDate, todayDateStr, colors.accent]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
+    <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
       {/* Header */}
       <View
         style={{
@@ -276,7 +283,8 @@ export default function DashboardScreen() {
           flexDirection: "row",
           alignItems: "center",
           borderBottomWidth: 1,
-          borderBottomColor: "#151515",
+          borderBottomColor: colors.headerBorder,
+          backgroundColor: colors.headerBg,
         }}
       >
         <Pressable
@@ -289,7 +297,7 @@ export default function DashboardScreen() {
             justifyContent: "center",
           }}
         >
-          <Text style={{ color: "#888", fontSize: 22 }}>{"\u2190"}</Text>
+          <Text style={{ color: colors.textTertiary, fontSize: 22 }}>{"\u2190"}</Text>
         </Pressable>
         <Pressable
           onPress={() => setCalendarOpen((v) => !v)}
@@ -297,14 +305,14 @@ export default function DashboardScreen() {
         >
           <Text
             style={{
-              color: "#fff",
+              color: colors.textPrimary,
               fontSize: 17,
               fontWeight: "600",
             }}
           >
             {formatDateHeader(selectedDate)}
           </Text>
-          <Text style={{ color: "#A8FF3E", fontSize: 11, marginTop: 2 }}>
+          <Text style={{ color: colors.accent, fontSize: 11, marginTop: 2 }}>
             {calendarOpen ? "Tap to close" : "Tap for calendar"} {calendarOpen ? "\u25B2" : "\u25BC"}
           </Text>
         </Pressable>
@@ -314,14 +322,14 @@ export default function DashboardScreen() {
             setCalendarOpen(false);
           }}
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 16,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <Text style={{ color: selectedDate === todayDateStr ? "#555" : "#A8FF3E", fontSize: 12, fontWeight: "700" }}>
+          <Text style={{ color: selectedDate === todayDateStr ? colors.textMuted : colors.accent, fontSize: 12, fontWeight: "700" }}>
             Today
           </Text>
         </Pressable>
@@ -329,26 +337,26 @@ export default function DashboardScreen() {
 
       {/* Expandable Calendar */}
       {calendarOpen && (
-        <View style={{ backgroundColor: "#111", borderBottomWidth: 1, borderBottomColor: "#1C1C1C", paddingBottom: 8 }}>
+        <View style={{ backgroundColor: colors.cardBg, borderBottomWidth: 1, borderBottomColor: colors.cardBorder, paddingBottom: 8 }}>
           <Calendar
             current={selectedDate}
             onDayPress={handleDayPress}
             onMonthChange={handleMonthChange}
             markedDates={markedDates}
             maxDate={todayDateStr}
-            theme={CALENDAR_THEME}
+            theme={calendarTheme}
             enableSwipeMonths
             hideExtraDays
           />
           {/* Legend */}
           <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, paddingTop: 8 }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#A8FF3E", marginRight: 4 }} />
-              <Text style={{ color: "#666", fontSize: 11 }}>Food logged</Text>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent, marginRight: 4 }} />
+              <Text style={{ color: colors.subText, fontSize: 11 }}>Food logged</Text>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#333", marginRight: 4 }} />
-              <Text style={{ color: "#666", fontSize: 11 }}>No data</Text>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textFaint, marginRight: 4 }} />
+              <Text style={{ color: colors.subText, fontSize: 11 }}>No data</Text>
             </View>
           </View>
         </View>
@@ -357,22 +365,22 @@ export default function DashboardScreen() {
       <FlatList
         data={foodLogs}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <FoodLogRow item={item} />}
+        renderItem={({ item }) => <FoodLogRow item={item} colors={colors} />}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={{ padding: 16 }}>
             {/* Calorie card */}
             <View
               style={{
-                backgroundColor: "#111",
+                backgroundColor: colors.cardBg,
                 borderRadius: 16,
                 padding: 20,
                 borderWidth: 1,
-                borderColor: "#1C1C1C",
+                borderColor: colors.cardBorder,
                 marginBottom: 14,
               }}
             >
-              <Text style={{ color: "#888", fontSize: 13, marginBottom: 4 }}>
+              <Text style={{ color: colors.textTertiary, fontSize: 13, marginBottom: 4 }}>
                 Calories
               </Text>
               <View
@@ -383,21 +391,22 @@ export default function DashboardScreen() {
               >
                 <Text
                   style={{
-                    color: "#A8FF3E",
+                    color: colors.accent,
                     fontSize: 40,
                     fontWeight: "700",
                   }}
                 >
                   {summary.calories}
                 </Text>
-                <Text style={{ color: "#555", fontSize: 16, marginLeft: 6 }}>
+                <Text style={{ color: colors.textMuted, fontSize: 16, marginLeft: 6 }}>
                   / {targets.calories}
                 </Text>
               </View>
               <ProgressBar
                 current={summary.calories}
                 target={targets.calories}
-                color="#A8FF3E"
+                color={colors.accent}
+                trackColor={colors.progressBarBg}
               />
             </View>
 
@@ -407,11 +416,11 @@ export default function DashboardScreen() {
               <View
                 style={{
                   flex: 1,
-                  backgroundColor: "#111",
+                  backgroundColor: colors.cardBg,
                   borderRadius: 14,
                   padding: 14,
                   borderWidth: 1,
-                  borderColor: "#1C1C1C",
+                  borderColor: colors.cardBorder,
                 }}
               >
                 <Text style={{ color: "#4FC3F7", fontSize: 11, fontWeight: "600" }}>
@@ -419,14 +428,14 @@ export default function DashboardScreen() {
                 </Text>
                 <Text
                   style={{
-                    color: "#fff",
+                    color: colors.textPrimary,
                     fontSize: 22,
                     fontWeight: "700",
                     marginTop: 4,
                   }}
                 >
                   {summary.protein_g}
-                  <Text style={{ color: "#555", fontSize: 13 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                     /{targets.protein}g
                   </Text>
                 </Text>
@@ -434,6 +443,7 @@ export default function DashboardScreen() {
                   current={summary.protein_g}
                   target={targets.protein}
                   color="#4FC3F7"
+                  trackColor={colors.progressBarBg}
                 />
               </View>
 
@@ -441,11 +451,11 @@ export default function DashboardScreen() {
               <View
                 style={{
                   flex: 1,
-                  backgroundColor: "#111",
+                  backgroundColor: colors.cardBg,
                   borderRadius: 14,
                   padding: 14,
                   borderWidth: 1,
-                  borderColor: "#1C1C1C",
+                  borderColor: colors.cardBorder,
                 }}
               >
                 <Text style={{ color: "#FFB74D", fontSize: 11, fontWeight: "600" }}>
@@ -453,14 +463,14 @@ export default function DashboardScreen() {
                 </Text>
                 <Text
                   style={{
-                    color: "#fff",
+                    color: colors.textPrimary,
                     fontSize: 22,
                     fontWeight: "700",
                     marginTop: 4,
                   }}
                 >
                   {summary.carbs_g}
-                  <Text style={{ color: "#555", fontSize: 13 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                     /{targets.carbs}g
                   </Text>
                 </Text>
@@ -468,6 +478,7 @@ export default function DashboardScreen() {
                   current={summary.carbs_g}
                   target={targets.carbs}
                   color="#FFB74D"
+                  trackColor={colors.progressBarBg}
                 />
               </View>
 
@@ -475,11 +486,11 @@ export default function DashboardScreen() {
               <View
                 style={{
                   flex: 1,
-                  backgroundColor: "#111",
+                  backgroundColor: colors.cardBg,
                   borderRadius: 14,
                   padding: 14,
                   borderWidth: 1,
-                  borderColor: "#1C1C1C",
+                  borderColor: colors.cardBorder,
                 }}
               >
                 <Text style={{ color: "#E57373", fontSize: 11, fontWeight: "600" }}>
@@ -487,14 +498,14 @@ export default function DashboardScreen() {
                 </Text>
                 <Text
                   style={{
-                    color: "#fff",
+                    color: colors.textPrimary,
                     fontSize: 22,
                     fontWeight: "700",
                     marginTop: 4,
                   }}
                 >
                   {summary.fat_g}
-                  <Text style={{ color: "#555", fontSize: 13 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                     /{targets.fat}g
                   </Text>
                 </Text>
@@ -502,6 +513,7 @@ export default function DashboardScreen() {
                   current={summary.fat_g}
                   target={targets.fat}
                   color="#E57373"
+                  trackColor={colors.progressBarBg}
                 />
               </View>
             </View>
@@ -509,7 +521,7 @@ export default function DashboardScreen() {
             {/* Section header */}
             <Text
               style={{
-                color: "#666",
+                color: colors.subText,
                 fontSize: 12,
                 fontWeight: "600",
                 textTransform: "uppercase",
@@ -524,17 +536,17 @@ export default function DashboardScreen() {
         ListEmptyComponent={
           isLoading ? (
             <View style={{ paddingVertical: 40, alignItems: "center" }}>
-              <ActivityIndicator color="#A8FF3E" size="small" />
+              <ActivityIndicator color={colors.accent} size="small" />
             </View>
           ) : (
             <View style={{ paddingVertical: 40, alignItems: "center", paddingHorizontal: 32 }}>
               <Text style={{ fontSize: 40, marginBottom: 12 }}>{"\uD83C\uDF7D\uFE0F"}</Text>
-              <Text style={{ color: "#555", fontSize: 15, textAlign: "center" }}>
+              <Text style={{ color: colors.textMuted, fontSize: 15, textAlign: "center" }}>
                 {selectedDate === todayDateStr
                   ? "No food logged yet today"
                   : "No food logged on this day"}
               </Text>
-              <Text style={{ color: "#444", fontSize: 13, textAlign: "center", marginTop: 4 }}>
+              <Text style={{ color: colors.textFaint, fontSize: 13, textAlign: "center", marginTop: 4 }}>
                 Tap "Log Food" in chat to start tracking
               </Text>
             </View>

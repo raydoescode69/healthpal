@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -218,10 +220,12 @@ export default function OnboardingScreen() {
   };
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <ScrollView
       className="flex-1 bg-brand-dark"
       contentContainerClassName="flex-grow px-6 pt-16 pb-10 justify-between"
       keyboardShouldPersistTaps="handled"
+      onScrollBeginDrag={Keyboard.dismiss}
     >
       {/* Progress dots */}
       <View className="flex-row justify-center gap-2 mb-10">
@@ -265,5 +269,6 @@ export default function OnboardingScreen() {
         )}
       </View>
     </ScrollView>
+    </TouchableWithoutFeedback>
   );
 }
