@@ -31,14 +31,11 @@ export default function FoodLogModal({
   onFoodAnalyzed,
 }: FoodLogModalProps) {
   const [analyzing, setAnalyzing] = useState(false);
-  const [showCameraChoice, setShowCameraChoice] = useState(false);
   const mode = useThemeStore((s) => s.mode);
   const colors = THEMES[mode];
 
   const handleImageAnalysis = async (source: "camera" | "gallery") => {
     try {
-      setShowCameraChoice(false);
-
       // Request permissions
       if (source === "camera") {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -86,7 +83,6 @@ export default function FoodLogModal({
 
   const handleClose = () => {
     if (analyzing) return;
-    setShowCameraChoice(false);
     onClose();
   };
 
@@ -132,98 +128,6 @@ export default function FoodLogModal({
                 Analyzing your food...
               </Text>
             </View>
-          ) : showCameraChoice ? (
-            <>
-              <Text
-                style={{
-                  color: colors.textPrimary,
-                  fontSize: 17,
-                  fontWeight: "700",
-                  marginBottom: 20,
-                  textAlign: "center",
-                }}
-              >
-                Choose Source
-              </Text>
-
-              {/* Camera */}
-              <Pressable
-                onPress={() => handleImageAnalysis("camera")}
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.modalOptionPressBg : colors.modalOptionBg,
-                  borderRadius: 14,
-                  padding: 16,
-                  marginBottom: 10,
-                })}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 12,
-                      backgroundColor: colors.accentDark,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: 14,
-                    }}
-                  >
-                    <Ionicons name="camera" size={20} color={colors.accent} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600" }}>
-                      Take a Photo
-                    </Text>
-                    <Text style={{ color: colors.subText, fontSize: 12, marginTop: 2 }}>
-                      Snap your meal now
-                    </Text>
-                  </View>
-                </View>
-              </Pressable>
-
-              {/* Gallery */}
-              <Pressable
-                onPress={() => handleImageAnalysis("gallery")}
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.modalOptionPressBg : colors.modalOptionBg,
-                  borderRadius: 14,
-                  padding: 16,
-                  marginBottom: 10,
-                })}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 12,
-                      backgroundColor: colors.accentDark,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: 14,
-                    }}
-                  >
-                    <Ionicons name="images" size={20} color={colors.accent} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600" }}>
-                      Pick from Gallery
-                    </Text>
-                    <Text style={{ color: colors.subText, fontSize: 12, marginTop: 2 }}>
-                      Choose from your library
-                    </Text>
-                  </View>
-                </View>
-              </Pressable>
-
-              {/* Back */}
-              <Pressable
-                onPress={() => setShowCameraChoice(false)}
-                style={{ alignItems: "center", paddingTop: 8 }}
-              >
-                <Text style={{ color: colors.subText, fontSize: 14 }}>Back</Text>
-              </Pressable>
-            </>
           ) : (
             <>
               <Text
@@ -238,7 +142,7 @@ export default function FoodLogModal({
                 Log Food
               </Text>
 
-              {/* Type and Log */}
+              {/* Type and Add */}
               <Pressable
                 onPress={() => {
                   onClose();
@@ -265,23 +169,16 @@ export default function FoodLogModal({
                   >
                     <Ionicons name="keypad-outline" size={22} color={colors.accent} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600" }}>
-                      Type and Log
-                    </Text>
-                    <Text style={{ color: colors.subText, fontSize: 12, marginTop: 3 }}>
-                      Describe your meal in text
-                    </Text>
-                  </View>
-                  <View style={{ width: 20, alignItems: "center" }}>
-                    <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-                  </View>
+                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", flex: 1 }}>
+                    Type and Add
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
                 </View>
               </Pressable>
 
-              {/* Click and Log */}
+              {/* Click and Add */}
               <Pressable
-                onPress={() => setShowCameraChoice(true)}
+                onPress={() => handleImageAnalysis("camera")}
                 style={({ pressed }) => ({
                   backgroundColor: pressed ? colors.modalOptionPressBg : colors.modalOptionBg,
                   borderRadius: 14,
@@ -303,26 +200,54 @@ export default function FoodLogModal({
                   >
                     <Ionicons name="camera-outline" size={22} color={colors.accent} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600" }}>
-                      Click and Log
-                    </Text>
-                    <Text style={{ color: colors.subText, fontSize: 12, marginTop: 3 }}>
-                      Take or pick a photo for AI analysis
-                    </Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", flex: 1 }}>
+                    Click and Add
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+                </View>
+              </Pressable>
+
+              {/* Upload from Gallery */}
+              <Pressable
+                onPress={() => handleImageAnalysis("gallery")}
+                style={({ pressed }) => ({
+                  backgroundColor: pressed ? colors.modalOptionPressBg : colors.modalOptionBg,
+                  borderRadius: 14,
+                  padding: 16,
+                  marginBottom: 12,
+                })}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 14,
+                      backgroundColor: colors.accentDark,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: 14,
+                    }}
+                  >
+                    <Ionicons name="images-outline" size={22} color={colors.accent} />
                   </View>
-                  <View style={{ width: 20, alignItems: "center" }}>
-                    <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-                  </View>
+                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", flex: 1 }}>
+                    Upload from Gallery
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
                 </View>
               </Pressable>
 
               {/* Cancel */}
               <Pressable
                 onPress={handleClose}
-                style={{ alignItems: "center", paddingTop: 6 }}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  paddingVertical: 8,
+                  opacity: pressed ? 0.5 : 1,
+                })}
               >
-                <Text style={{ color: colors.subText, fontSize: 14 }}>Cancel</Text>
+                <Text style={{ color: colors.subText, fontSize: 13 }}>Cancel</Text>
               </Pressable>
             </>
           )}

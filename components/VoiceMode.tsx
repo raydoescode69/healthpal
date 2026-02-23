@@ -17,7 +17,7 @@ import {
 } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 import { Ionicons } from "@expo/vector-icons";
-import { speechToText, textToSpeech } from "../lib/elevenLabsService";
+import { speechToText, textToSpeech } from "../lib/cartesiaService";
 import { sendMessage } from "../lib/chatEngine";
 import ParticleSphere from "./ParticleSphere";
 

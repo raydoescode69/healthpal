@@ -71,9 +71,15 @@ export const THEMES = {
 
     // Sidebar
     sidebarBg: "#0D0D0D",
+    sidebarGradientTop: "#0D0D0D",
+    sidebarGradientBottom: "#080808",
     sidebarItemActiveBg: "#1A2E0A",
+    sidebarAccentBar: "#A8FF3E",
+    sidebarProfileGlow: "rgba(168, 255, 62, 0.15)",
     sidebarButtonBg: "#141414",
     sidebarButtonPressBg: "#1A1A1A",
+    sidebarNewChatBg: "#1A2E0A",
+    sidebarNewChatPressBg: "#2a4a12",
 
     // Modal
     modalBg: "#1A1A1A",
@@ -157,9 +163,15 @@ export const THEMES = {
 
     // Sidebar
     sidebarBg: "#F8F8F8",
+    sidebarGradientTop: "#F8F8F8",
+    sidebarGradientBottom: "#F0F0F0",
     sidebarItemActiveBg: "#E8F5D6",
+    sidebarAccentBar: "#5BAA22",
+    sidebarProfileGlow: "rgba(91, 170, 34, 0.12)",
     sidebarButtonBg: "#F0F0F0",
     sidebarButtonPressBg: "#E8E8E8",
+    sidebarNewChatBg: "#E8F5D6",
+    sidebarNewChatPressBg: "#D6EDBC",
 
     // Modal
     modalBg: "#FFFFFF",

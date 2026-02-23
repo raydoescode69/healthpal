@@ -49,6 +49,13 @@ const DIET_DISPLAY: Record<string, string> = {
   no_preference: "No Pref",
 };
 
+const GOAL_COLORS: Record<string, string> = {
+  lose_weight: "#FF6B6B",
+  gain_muscle: "#4ECDC4",
+  eat_healthy: "#A8FF3E",
+  manage_stress: "#C084FC",
+};
+
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   const day = d.getDate();
@@ -142,6 +149,7 @@ export default function ChatSidebar({
   const grouped = groupByDate(conversations);
   const goalLabel = profile?.goal ? GOAL_DISPLAY[profile.goal] : null;
   const dietLabel = profile?.diet_type ? DIET_DISPLAY[profile.diet_type] : null;
+  const goalColor = profile?.goal ? GOAL_COLORS[profile.goal] || colors.accent : colors.accent;
   const initial = profile?.name?.charAt(0)?.toUpperCase() || "?";
 
   return (
@@ -189,82 +197,139 @@ export default function ChatSidebar({
       >
         {/* ── Profile section ── */}
         <View style={{
-          paddingTop: insets.top + 20,
+          paddingTop: insets.top + 24,
           paddingHorizontal: 20,
-          paddingBottom: 20,
+          paddingBottom: 24,
         }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View
-              style={{
-                width: 46,
-                height: 46,
-                borderRadius: 23,
-                backgroundColor: colors.accentDark,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1.5,
-                borderColor: colors.accent,
-              }}
-            >
-              <Text style={{ color: colors.accent, fontSize: 18, fontWeight: "bold" }}>
-                {initial}
-              </Text>
+            {/* Avatar with glow */}
+            <View style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: colors.sidebarProfileGlow,
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: colors.accent,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.4,
+              shadowRadius: 12,
+              elevation: 6,
+            }}>
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: colors.accentDark,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 2,
+                  borderColor: colors.accent,
+                }}
+              >
+                <Text style={{ color: colors.accent, fontSize: 20, fontWeight: "bold" }}>
+                  {initial}
+                </Text>
+              </View>
             </View>
             <View style={{ marginLeft: 14, flex: 1 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: "700" }} numberOfLines={1}>
+              <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700" }} numberOfLines={1}>
                 {profile?.name || "User"}
               </Text>
-              {(goalLabel || dietLabel) && (
-                <Text style={{ color: colors.subText, fontSize: 12, marginTop: 3 }} numberOfLines={1}>
-                  {[goalLabel, dietLabel].filter(Boolean).join("  \u00B7  ")}
-                </Text>
-              )}
+              {/* Badge chips */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, gap: 6 }}>
+                {goalLabel && (
+                  <View style={{
+                    backgroundColor: goalColor + "20",
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: goalColor + "40",
+                  }}>
+                    <Text style={{ color: goalColor, fontSize: 11, fontWeight: "600" }}>
+                      {goalLabel}
+                    </Text>
+                  </View>
+                )}
+                {dietLabel && (
+                  <View style={{
+                    backgroundColor: colors.accent + "18",
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: colors.accent + "30",
+                  }}>
+                    <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "600" }}>
+                      {dietLabel}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
         </View>
 
         {/* ── Action buttons ── */}
-        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 8 }}>
-          {/* New Chat */}
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
+          {/* New Chat — Hero CTA */}
           <Pressable
             onPress={() => { onNewChat(); onClose(); }}
             style={({ pressed }) => ({
-              backgroundColor: pressed ? colors.accentDark : colors.sidebarButtonBg,
-              borderRadius: 12,
-              paddingVertical: 13,
+              backgroundColor: pressed ? colors.sidebarNewChatPressBg : colors.sidebarNewChatBg,
+              borderRadius: 14,
+              paddingVertical: 14,
               paddingHorizontal: 16,
+              borderWidth: 1,
+              borderColor: colors.accent + "30",
             })}
           >
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 22, alignItems: "center" }}>
-                <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+              <View style={{
+                width: 26,
+                height: 26,
+                borderRadius: 13,
+                backgroundColor: colors.accent,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 10,
+              }}>
+                <Ionicons name="add" size={16} color="#000" />
               </View>
-              <Text style={{ color: colors.textSecondary, fontWeight: "600", fontSize: 14, marginLeft: 10 }}>
+              <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 15 }}>
                 New Chat
               </Text>
             </View>
           </Pressable>
 
-          {/* Dashboard */}
+          {/* Dashboard — Secondary */}
           <Pressable
             onPress={() => { router.push("/(main)/dashboard"); onClose(); }}
             style={({ pressed }) => ({
               backgroundColor: pressed ? colors.sidebarButtonPressBg : colors.sidebarButtonBg,
               borderRadius: 12,
-              paddingVertical: 13,
+              paddingVertical: 12,
               paddingHorizontal: 16,
             })}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <View style={{ width: 22, alignItems: "center" }}>
-                <Ionicons name="stats-chart-outline" size={16} color={colors.textTertiary} />
+              <View style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                backgroundColor: colors.widgetIconBg,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 10,
+              }}>
+                <Ionicons name="stats-chart-outline" size={14} color={colors.accent} />
               </View>
-              <Text style={{ color: colors.textSecondary, fontWeight: "500", fontSize: 14, marginLeft: 10, flex: 1 }}>
+              <Text style={{ color: colors.textSecondary, fontWeight: "500", fontSize: 14, flex: 1 }}>
                 Dashboard
               </Text>
-              <View style={{ width: 18, alignItems: "center" }}>
-                <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
-              </View>
+              <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
             </View>
           </Pressable>
         </View>
@@ -278,16 +343,25 @@ export default function ChatSidebar({
           alignItems: "center",
           justifyContent: "space-between",
           paddingHorizontal: 20,
-          paddingTop: 16,
+          paddingTop: 18,
           paddingBottom: 10,
         }}>
           <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 }}>
             Conversations
           </Text>
           {conversations.length > 0 && (
-            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "600" }}>
-              {conversations.length}
-            </Text>
+            <View style={{
+              backgroundColor: colors.accent + "18",
+              paddingHorizontal: 7,
+              paddingVertical: 2,
+              borderRadius: 10,
+              minWidth: 22,
+              alignItems: "center",
+            }}>
+              <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "700" }}>
+                {conversations.length}
+              </Text>
+            </View>
           )}
         </View>
 
@@ -298,68 +372,84 @@ export default function ChatSidebar({
               <ActivityIndicator color={colors.accent} size="small" />
             </View>
           ) : conversations.length === 0 ? (
-            <View style={{ paddingVertical: 40, alignItems: "center", paddingHorizontal: 24 }}>
-              <Text style={{ color: colors.textFaint, fontSize: 13, textAlign: "center" }}>
-                No conversations yet.{"\n"}Start chatting!
+            <View style={{ paddingVertical: 50, alignItems: "center", paddingHorizontal: 30 }}>
+              <Text style={{ fontSize: 36, marginBottom: 12 }}>{"\uD83D\uDCAC"}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600", textAlign: "center", marginBottom: 4 }}>
+                No conversations yet
+              </Text>
+              <Text style={{ color: colors.textFaint, fontSize: 13, textAlign: "center", lineHeight: 18 }}>
+                Tap "New Chat" above to start your health journey
               </Text>
             </View>
           ) : (
             grouped.map((group, groupIdx) => (
-              <View key={group.label} style={{ marginBottom: 12 }}>
-                {groupIdx > 0 && (
-                  <View style={{ height: 1, backgroundColor: colors.separator, marginHorizontal: 20, marginBottom: 4 }} />
-                )}
-                <Text style={{
-                  color: colors.textFaint,
-                  fontSize: 11,
-                  fontWeight: "700",
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
+              <View key={group.label} style={{ marginBottom: 4 }}>
+                {/* Date group header */}
+                <View style={{
+                  flexDirection: "row",
+                  alignItems: "center",
                   paddingHorizontal: 20,
-                  paddingTop: 16,
-                  paddingBottom: 10,
+                  paddingTop: groupIdx > 0 ? 16 : 4,
+                  paddingBottom: 8,
                 }}>
-                  {group.label}
-                </Text>
+                  <View style={{ height: 1, flex: 1, backgroundColor: colors.separator }} />
+                  <Text style={{
+                    color: colors.textFaint,
+                    fontSize: 10,
+                    fontWeight: "700",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                    paddingHorizontal: 10,
+                  }}>
+                    {group.label}
+                  </Text>
+                  <View style={{ height: 1, flex: 1, backgroundColor: colors.separator }} />
+                </View>
                 {group.items.map((conv) => {
                   const isActive = conv.id === currentConversationId;
                   const title = conv.title || "New conversation";
-                  const displayTitle = title.length > 30 ? title.slice(0, 30) + "..." : title;
+                  const displayTitle = title.length > 28 ? title.slice(0, 28) + "..." : title;
                   return (
                     <Pressable
                       key={conv.id}
                       onPress={() => { onSelectConversation(conv); onClose(); }}
                       style={({ pressed }) => ({
-                        marginHorizontal: 12,
-                        marginVertical: 3,
-                        paddingHorizontal: 14,
-                        paddingVertical: 13,
+                        marginHorizontal: 10,
+                        marginVertical: 2,
                         borderRadius: 10,
+                        overflow: "hidden",
                         backgroundColor: isActive ? colors.sidebarItemActiveBg : pressed ? colors.sidebarButtonBg : "transparent",
                       })}
                     >
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <View style={{ width: 20, marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                          <Ionicons
-                            name={isActive ? "chatbubble" : "chatbubble-outline"}
-                            size={14}
-                            color={isActive ? colors.accent : colors.textFaint}
-                          />
+                      <View style={{ flexDirection: "row" }}>
+                        {/* Left accent bar for active item */}
+                        <View style={{
+                          width: 3,
+                          backgroundColor: isActive ? colors.sidebarAccentBar : "transparent",
+                          borderRadius: 2,
+                        }} />
+                        <View style={{
+                          flex: 1,
+                          paddingHorizontal: 12,
+                          paddingVertical: 11,
+                        }}>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <Text
+                              style={{
+                                flex: 1,
+                                color: isActive ? colors.pinnedText : colors.textSecondary,
+                                fontSize: 14,
+                                fontWeight: isActive ? "600" : "400",
+                              }}
+                              numberOfLines={1}
+                            >
+                              {displayTitle}
+                            </Text>
+                            <Text style={{ color: colors.textFaint, fontSize: 10, marginLeft: 8 }}>
+                              {formatDate(conv.created_at)}
+                            </Text>
+                          </View>
                         </View>
-                        <Text
-                          style={{
-                            flex: 1,
-                            color: isActive ? colors.pinnedText : colors.textSecondary,
-                            fontSize: 14,
-                            fontWeight: isActive ? "600" : "400",
-                          }}
-                          numberOfLines={1}
-                        >
-                          {displayTitle}
-                        </Text>
-                        <Text style={{ color: colors.textFaint, fontSize: 10, marginLeft: 8 }}>
-                          {formatDate(conv.created_at)}
-                        </Text>
                       </View>
                     </Pressable>
                   );
@@ -370,29 +460,26 @@ export default function ChatSidebar({
           <View style={{ height: 20 }} />
         </ScrollView>
 
-        {/* ── Sign out ── */}
+        {/* ── Sign out — understated text link ── */}
         <View style={{
-          paddingHorizontal: 16,
+          paddingHorizontal: 20,
           paddingBottom: insets.bottom + 16,
           paddingTop: 12,
-          borderTopWidth: 1,
-          borderTopColor: colors.separator,
+          alignItems: "center",
         }}>
           <Pressable
             onPress={() => { onLogout(); onClose(); }}
             style={({ pressed }) => ({
-              paddingVertical: 12,
-              borderRadius: 12,
-              backgroundColor: pressed ? colors.dangerBg : colors.widgetBg,
+              paddingVertical: 8,
+              paddingHorizontal: 16,
+              opacity: pressed ? 0.5 : 0.7,
             })}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
-              <View style={{ width: 20, alignItems: "center", marginRight: 8 }}>
-                <Ionicons name="log-out-outline" size={16} color={colors.danger} />
-              </View>
-              <Text style={{ color: colors.danger, fontWeight: "600", fontSize: 14 }}>
-                Sign Out
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ color: colors.subText, fontSize: 13, fontWeight: "500" }}>
+                Sign out
               </Text>
+              <Ionicons name="log-out-outline" size={14} color={colors.subText} />
             </View>
           </Pressable>
         </View>

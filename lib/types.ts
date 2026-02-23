@@ -38,7 +38,6 @@ export interface Message {
 export const QUICK_ACTIONS = [
   { label: "Get Diet Plan", icon: "diet-plan" },
   { label: "Track Calories", icon: "track-calories" },
-  { label: "Log Food", icon: "log-food" },
   { label: "Order Food", icon: "order-food" },
 ] as const;
 

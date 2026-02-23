@@ -14,7 +14,7 @@ import {
   RecordingPresets,
 } from "expo-audio";
 import { cacheDirectory } from "expo-file-system/legacy";
-import { speechToText, textToSpeech } from "../../lib/elevenLabsService";
+import { speechToText, textToSpeech } from "../../lib/cartesiaService";
 import { sendMessage } from "../../lib/chatEngine";
 import { useAuthStore } from "../../store/useAuthStore";
 
@@ -31,9 +31,9 @@ const TESTS = [
   "Mic Permission",
   "Audio Mode (Record)",
   "Record 2s Audio",
-  "ElevenLabs STT",
+  "Cartesia STT",
   "GPT-4o Response",
-  "ElevenLabs TTS",
+  "Cartesia TTS",
   "Audio Playback",
 ] as const;
 
@@ -69,7 +69,7 @@ export default function VoiceTestScreen() {
     const t1 = "API Key Check";
     updateResult(t1, { status: "running", message: "Checking..." });
     try {
-      const key = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY;
+      const key = process.env.EXPO_PUBLIC_CARTESIA_API_KEY;
       if (!key || key === "your-key-here") {
         throw new Error("Key missing or placeholder");
       }
@@ -131,8 +131,8 @@ export default function VoiceTestScreen() {
       return;
     }
 
-    // Test 5: ElevenLabs STT
-    const t5 = "ElevenLabs STT";
+    // Test 5: Cartesia STT
+    const t5 = "Cartesia STT";
     updateResult(t5, { status: "running", message: "Transcribing..." });
     const sttStart = Date.now();
     try {
@@ -193,8 +193,8 @@ export default function VoiceTestScreen() {
       return;
     }
 
-    // Test 7: ElevenLabs TTS
-    const t7 = "ElevenLabs TTS";
+    // Test 7: Cartesia TTS
+    const t7 = "Cartesia TTS";
     const ttsInput = botResponse || "Hello, how are you doing today?";
     updateResult(t7, { status: "running", message: "Generating speech..." });
     const ttsStart = Date.now();

@@ -30,7 +30,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Crypto from "expo-crypto";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
@@ -50,6 +50,9 @@ import CalorieLogCard from "../../components/CalorieLogCard";
 import ChatSidebar from "../../components/ChatSidebar";
 import FoodLogModal from "../../components/FoodLogModal";
 import VoiceMode from "../../components/VoiceMode";
+import { requestRecordingPermissionsAsync } from "expo-audio";
+import { unregisterPushToken } from "../../lib/notificationService";
+import { dismissCalorieNotification } from "../../lib/androidNotificationService";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -59,14 +62,12 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const QUICK_ACTION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   "Get Diet Plan": "nutrition-outline",
   "Track Calories": "analytics-outline",
-  "Log Food": "restaurant-outline",
   "Order Food": "fast-food-outline",
 };
 
 const QUICK_ACTION_DESCS: Record<string, string> = {
   "Get Diet Plan": "AI-powered 7-day meal plan for you",
   "Track Calories": "Snap a photo to track your meal",
-  "Log Food": "Type or click to log what you ate",
   "Order Food": "Get healthy food suggestions to order",
 };
 
@@ -659,6 +660,7 @@ function ContextMenuModal({
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { conversationId: navConversationId } = useLocalSearchParams<{ conversationId?: string }>();
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const logout = useAuthStore((s) => s.logout);
@@ -749,6 +751,66 @@ export default function ChatScreen() {
     loadLatestConversation();
     loadTodayLogs(userId);
   }, [userId]);
+
+  // ── Supabase Realtime: listen for followup messages ────────
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel("followup-messages")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as {
+            id: string;
+            role: string;
+            content: string;
+            created_at: string;
+            conversation_id: string;
+            message_type?: string;
+          };
+
+          // Only handle followup messages for the current conversation
+          if (
+            newMsg.message_type === "followup" &&
+            newMsg.conversation_id === conversationIdRef.current
+          ) {
+            const followupMsg: DisplayMessage = {
+              id: newMsg.id,
+              role: newMsg.role as "user" | "assistant",
+              content: newMsg.content,
+              created_at: newMsg.created_at,
+            };
+            setMessages((prev) => {
+              // Avoid duplicates
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, followupMsg];
+            });
+            forceScrollToEnd();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  // ── Handle notification tap navigation ────────────────────
+  useEffect(() => {
+    if (!navConversationId || !userId) return;
+    if (navConversationId === conversationIdRef.current) return;
+
+    // Load the conversation from the notification tap
+    handleSelectConversation({ id: navConversationId, title: "", created_at: "" });
+  }, [navConversationId, userId]);
 
   const loadLatestConversation = async () => {
     try {
@@ -1091,6 +1153,12 @@ export default function ChatScreen() {
 
   // ── Logout handler ─────────────────────────────────────────
   const handleLogout = async () => {
+    // Cleanup notifications before signing out
+    if (userId) {
+      unregisterPushToken(userId);
+    }
+    dismissCalorieNotification();
+
     const { error } = await supabase.auth.signOut();
     if (error) {
       Alert.alert("Error", error.message);
@@ -1229,11 +1297,6 @@ export default function ChatScreen() {
   // ── Quick action handlers ──────────────────────────────────
   const handleQuickAction = (label: string) => {
     switch (label) {
-      case "Log Food":
-        setShowWaterPrompt(false);
-        setShowFoodPrompt(false);
-        setShowFoodLogModal(true);
-        break;
       case "Get Diet Plan": {
         const dietIndex = listData.findIndex((item) => isDietCard(item));
         if (dietIndex >= 0) {
@@ -1244,7 +1307,9 @@ export default function ChatScreen() {
         break;
       }
       case "Track Calories":
-        router.push("/(main)/track-food" as any);
+        setShowWaterPrompt(false);
+        setShowFoodPrompt(false);
+        setShowFoodLogModal(true);
         break;
       case "Order Food":
         handleSend("Suggest me some healthy food I can order online right now");
@@ -1396,35 +1461,59 @@ export default function ChatScreen() {
         keyboardVerticalOffset={Platform.OS === "android" ? 20 : 0}
       >
         {/* Header */}
-        <Pressable
-          onPress={Keyboard.dismiss}
+        <View
           style={{
             paddingTop: insets.top + 6,
             paddingHorizontal: 20,
             paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.headerBorder,
             backgroundColor: colors.headerBg,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: mode === "dark" ? 0.3 : 0.08,
+            shadowRadius: 6,
+            elevation: 4,
+            zIndex: 10,
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Pressable
               onPress={() => setSidebarOpen(true)}
-              style={{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" }}
+              style={({ pressed }) => ({
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.5 : 1,
+              })}
             >
               <Ionicons name="menu" size={22} color={colors.subText} />
             </Pressable>
 
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Pressable
+              onPress={Keyboard.dismiss}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
               <Text style={{ fontSize: 17, color: colors.headerText, fontWeight: "600" }}>
-                Pal {"\uD83C\uDF3F"}
+                Nyra {"\uD83C\uDF3F"}
               </Text>
-            </View>
+            </Pressable>
 
             {/* Dark/Light mode toggle */}
             <Pressable
               onPress={toggleMode}
-              style={{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" }}
+              style={({ pressed }) => ({
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.5 : 1,
+              })}
             >
               <Ionicons
                 name={mode === "dark" ? "sunny-outline" : "moon-outline"}
@@ -1433,7 +1522,7 @@ export default function ChatScreen() {
               />
             </Pressable>
           </View>
-        </Pressable>
+        </View>
 
         {/* Pinned message banners */}
         {pinnedItems.length > 0 && (
@@ -1551,9 +1640,12 @@ export default function ChatScreen() {
         <View
           style={{
             paddingBottom: insets.bottom + 4,
-            borderTopWidth: 1,
-            borderTopColor: colors.headerBorder,
             backgroundColor: colors.bg,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: mode === "dark" ? 0.2 : 0.06,
+            shadowRadius: 4,
+            elevation: 3,
           }}
         >
           {/* Reply preview bar */}
@@ -1588,26 +1680,30 @@ export default function ChatScreen() {
           <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
             <View style={{
               flexDirection: "row",
-              alignItems: "flex-end",
+              alignItems: "center",
               backgroundColor: colors.inputBg,
               borderRadius: 24,
               borderWidth: 1,
               borderColor: colors.inputBorder,
-              paddingLeft: 8,
-              paddingRight: 6,
-              paddingVertical: 2,
+              paddingLeft: 6,
+              paddingRight: 4,
+              minHeight: 48,
+              shadowColor: mode === "dark" ? "#000" : "#888",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: mode === "dark" ? 0.3 : 0.08,
+              shadowRadius: 3,
+              elevation: 1,
             }}>
               <Pressable
                 onPress={() => setShowQuickActions(true)}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
+                style={({ pressed }) => ({
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
                   alignItems: "center",
                   justifyContent: "center",
-                  marginBottom: 4,
-                  alignSelf: "flex-end",
-                }}
+                  opacity: pressed ? 0.5 : 1,
+                })}
               >
                 <Ionicons name="grid-outline" size={20} color={colors.accent} />
               </Pressable>
@@ -1631,16 +1727,22 @@ export default function ChatScreen() {
                 onSubmitEditing={() => handleSend()}
               />
               <Pressable
-                onPress={() => setShowVoiceMode(true)}
-                style={{
-                  marginLeft: 4,
-                  marginBottom: 4,
+                onPress={async () => {
+                  const perm = await requestRecordingPermissionsAsync();
+                  if (!perm.granted) {
+                    Alert.alert("Permission needed", "Microphone access is required for voice mode.");
+                    return;
+                  }
+                  setShowVoiceMode(true);
+                }}
+                style={({ pressed }) => ({
                   width: 36,
                   height: 36,
                   borderRadius: 18,
                   alignItems: "center",
                   justifyContent: "center",
-                }}
+                  opacity: pressed ? 0.4 : 0.85,
+                })}
               >
                 <Ionicons name="mic-outline" size={22} color={colors.accent} />
               </Pressable>
@@ -1649,24 +1751,20 @@ export default function ChatScreen() {
                 disabled={!input.trim() || isLoading}
                 style={{
                   marginLeft: 2,
-                  marginBottom: 4,
                   width: 36,
                   height: 36,
                   borderRadius: 18,
                   alignItems: "center",
                   justifyContent: "center",
                   backgroundColor: input.trim() && !isLoading ? colors.sendBgActive : colors.sendBg,
+                  opacity: input.trim() && !isLoading ? 1 : 0.4,
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: "bold",
-                    color: input.trim() && !isLoading ? colors.sendTextActive : colors.sendText,
-                  }}
-                >
-                  {"\u2191"}
-                </Text>
+                <Ionicons
+                  name="arrow-up"
+                  size={18}
+                  color={input.trim() && !isLoading ? colors.sendTextActive : colors.sendText}
+                />
               </Pressable>
             </View>
           </View>
@@ -1781,19 +1879,21 @@ export default function ChatScreen() {
         onLogout={handleLogout}
       />
 
-      {/* Voice mode overlay */}
-      <VoiceMode
-        visible={showVoiceMode}
-        onClose={() => setShowVoiceMode(false)}
-        userId={userId}
-        conversationId={conversationIdRef.current}
-        messageHistory={messages.slice(-10).map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        }))}
-        dietPlanAlreadyShown={dietPlanShownRef.current}
-        onNewMessages={handleVoiceMessages}
-      />
+      {/* Voice mode overlay — only mount when open so useAudioRecorder doesn't fire on chat mount */}
+      {showVoiceMode && (
+        <VoiceMode
+          visible={showVoiceMode}
+          onClose={() => setShowVoiceMode(false)}
+          userId={userId}
+          conversationId={conversationIdRef.current}
+          messageHistory={messages.slice(-10).map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          }))}
+          dietPlanAlreadyShown={dietPlanShownRef.current}
+          onNewMessages={handleVoiceMessages}
+        />
+      )}
     </View>
   );
 }

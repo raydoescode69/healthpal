@@ -13,6 +13,7 @@ import { useAuthStore } from "../../store/useAuthStore";
 import { useTrackingStore } from "../../store/useTrackingStore";
 import { useThemeStore } from "../../store/useThemeStore";
 import { THEMES, type ThemeColors } from "../../lib/theme";
+import { calculateTargets } from "../../lib/nutritionUtils";
 import type { FoodLog } from "../../lib/types";
 
 const MEAL_EMOJI: Record<string, string> = {
@@ -41,30 +42,6 @@ function formatDateHeader(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${d.getDate()} ${months[d.getMonth()]} Nutrition`;
-}
-
-function calculateTargets(profile: any) {
-  if (!profile?.weight || !profile?.height || !profile?.age) {
-    return { calories: 2000, protein: 150, carbs: 200, fat: 67 };
-  }
-  const bmr = 10 * profile.weight + 6.25 * profile.height - 5 * profile.age + 5;
-  const tdee = bmr * 1.55;
-  const goal = (profile.goal || "").toLowerCase();
-  let cal = Math.round(tdee);
-  if (goal.includes("lose")) cal = Math.round(tdee - 500);
-  if (goal.includes("gain") || goal.includes("muscle")) cal = Math.round(tdee + 400);
-
-  let pPct = 0.3, cPct = 0.4, fPct = 0.3;
-  if (goal.includes("lose")) { pPct = 0.35; cPct = 0.35; fPct = 0.3; }
-  if (goal.includes("gain") || goal.includes("muscle")) { pPct = 0.35; cPct = 0.45; fPct = 0.2; }
-  if (goal.includes("keto")) { pPct = 0.3; cPct = 0.1; fPct = 0.6; }
-
-  return {
-    calories: cal,
-    protein: Math.round((cal * pPct) / 4),
-    carbs: Math.round((cal * cPct) / 4),
-    fat: Math.round((cal * fPct) / 9),
-  };
 }
 
 function ProgressBar({
