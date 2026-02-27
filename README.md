@@ -1,4 +1,4 @@
-# HealthPal
+# NYRA
 
 AI-powered health & nutrition companion built with React Native + Expo. Chat with "Pal" — a friendly AI buddy who helps you track food, manage diet plans, and stay on top of your health goals.
 
