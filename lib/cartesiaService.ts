@@ -102,15 +102,10 @@ export async function textToSpeech(
       },
       output_format: {
         container: "wav",
-        encoding: "pcm_f32le",
-        sample_rate: 44100,
+        encoding: "pcm_s16le",
+        sample_rate: 24000,
       },
-      speed: "normal",
-      generation_config: {
-        speed: 0.9,
-        volume: 1.1,
-        emotion: "excited",
-      },
+      language: "en",
     }),
   });
 

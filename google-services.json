@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "491139026103",
+    "project_id": "healthbot-29f9d",
+    "storage_bucket": "healthbot-29f9d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:491139026103:android:b75f8124afb611fb765132",
+        "android_client_info": {
+          "package_name": "com.healthpal.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAc_H7ACCs4hrX4pt77KUTNHYnDO8hn-ow"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

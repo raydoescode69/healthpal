@@ -11,12 +11,13 @@ export async function setupNotificationChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
 
   await Notifications.setNotificationChannelAsync("calorie-progress", {
-    name: "Calorie Progress",
-    importance: Notifications.AndroidImportance.DEFAULT,
+    name: "Daily Progress",
+    importance: Notifications.AndroidImportance.LOW,
     sound: undefined,
     vibrationPattern: [],
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     enableVibrate: false,
+    showBadge: false,
   });
 
   await Notifications.setNotificationChannelAsync("followups", {
@@ -83,9 +84,18 @@ export function setupNotificationResponseHandler(): Notifications.EventSubscript
 }
 
 // ── Permission Request + Push Token Registration ────────────────
+function isExpoGo(): boolean {
+  return Constants.appOwnership === "expo" || !Constants.expoConfig?.extra?.eas?.projectId;
+}
+
 export async function registerForPushNotifications(userId: string): Promise<string | null> {
   if (!Device.isDevice) {
     console.log("[Notifications] Push requires a physical device");
+    return null;
+  }
+
+  if (isExpoGo()) {
+    console.log("[Notifications] Push notifications not supported in Expo Go (SDK 53+). Use a dev build.");
     return null;
   }
 
@@ -154,6 +164,11 @@ export async function cancelMealReminders(): Promise<void> {
 }
 
 export async function scheduleMealReminders(): Promise<void> {
+  if (isExpoGo()) {
+    console.log("[Notifications] Meal reminders skipped in Expo Go");
+    return;
+  }
+
   await cancelMealReminders();
 
   for (const reminder of MEAL_REMINDERS) {

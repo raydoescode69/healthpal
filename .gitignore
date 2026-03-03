@@ -34,8 +34,7 @@ yarn-error.*
 .env
 .env*.local
 
-# Firebase / Google Services (contains API keys)
-google-services.json
+# Firebase / Google Services
 GoogleService-Info.plist
 
 # Claude Code
@@ -55,3 +54,6 @@ nul
 # generated native folders
 /ios
 /android
+
+# Raw KB source files (large xlsx — only the generated JSON is tracked)
+data/*.xlsx

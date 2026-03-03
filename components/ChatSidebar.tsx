@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
+  Image,
   Pressable,
   ScrollView,
   Dimensions,
@@ -18,6 +19,7 @@ import { useRouter } from "expo-router";
 import { supabase } from "../lib/supabase";
 import { useThemeStore } from "../store/useThemeStore";
 import { THEMES } from "../lib/theme";
+import type { Session } from "@supabase/supabase-js";
 import type { ConversationItem, UserProfile } from "../lib/types";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -31,6 +33,7 @@ interface ChatSidebarProps {
   onSelectConversation: (conv: ConversationItem) => void;
   onNewChat: () => void;
   profile: UserProfile | null;
+  session: Session | null;
   onLogout: () => void;
 }
 
@@ -95,6 +98,7 @@ export default function ChatSidebar({
   onSelectConversation,
   onNewChat,
   profile,
+  session,
   onLogout,
 }: ChatSidebarProps) {
   const insets = useSafeAreaInsets();
@@ -150,7 +154,12 @@ export default function ChatSidebar({
   const goalLabel = profile?.goal ? GOAL_DISPLAY[profile.goal] : null;
   const dietLabel = profile?.diet_type ? DIET_DISPLAY[profile.diet_type] : null;
   const goalColor = profile?.goal ? GOAL_COLORS[profile.goal] || colors.accent : colors.accent;
-  const initial = profile?.name?.charAt(0)?.toUpperCase() || "?";
+
+  // Get user info from Google auth metadata, fallback to profile
+  const userMeta = session?.user?.user_metadata;
+  const avatarUrl = userMeta?.avatar_url || userMeta?.picture || null;
+  const displayName = profile?.name || userMeta?.full_name || userMeta?.name || session?.user?.email?.split("@")[0] || "User";
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <View
@@ -202,7 +211,7 @@ export default function ChatSidebar({
           paddingBottom: 24,
         }}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            {/* Avatar with glow */}
+            {/* Avatar — Google profile pic or fallback initial */}
             <View style={{
               width: 52,
               height: 52,
@@ -216,26 +225,35 @@ export default function ChatSidebar({
               shadowRadius: 12,
               elevation: 6,
             }}>
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 24,
-                  backgroundColor: colors.accentDark,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 2,
-                  borderColor: colors.accent,
-                }}
-              >
-                <Text style={{ color: colors.accent, fontSize: 20, fontWeight: "bold" }}>
-                  {initial}
-                </Text>
-              </View>
+              {avatarUrl ? (
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
+                  }}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
+                    backgroundColor: colors.accentDark,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ color: colors.accent, fontSize: 20, fontWeight: "bold" }}>
+                    {initial}
+                  </Text>
+                </View>
+              )}
             </View>
             <View style={{ marginLeft: 14, flex: 1 }}>
               <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700" }} numberOfLines={1}>
-                {profile?.name || "User"}
+                {displayName}
               </Text>
               {/* Badge chips */}
               <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, gap: 6 }}>
@@ -286,7 +304,7 @@ export default function ChatSidebar({
               borderColor: colors.accent + "30",
             })}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View style={{
                 width: 26,
                 height: 26,
@@ -465,21 +483,19 @@ export default function ChatSidebar({
           paddingHorizontal: 20,
           paddingBottom: insets.bottom + 16,
           paddingTop: 12,
-          alignItems: "center",
         }}>
           <Pressable
             onPress={() => { onLogout(); onClose(); }}
             style={({ pressed }) => ({
               paddingVertical: 8,
-              paddingHorizontal: 16,
               opacity: pressed ? 0.5 : 0.7,
             })}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={{ color: colors.subText, fontSize: 13, fontWeight: "500" }}>
+              <Ionicons name="log-out-outline" size={18} color={colors.subText} />
+              <Text style={{ color: colors.subText, fontSize: 16, fontWeight: "600" }}>
                 Sign out
               </Text>
-              <Ionicons name="log-out-outline" size={14} color={colors.subText} />
             </View>
           </Pressable>
         </View>

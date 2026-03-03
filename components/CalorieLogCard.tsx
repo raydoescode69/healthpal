@@ -53,7 +53,10 @@ export default function CalorieLogCard({
             }}
           >
             <Text style={{ color: result.confidence === "high" ? "#4CAF50" : result.confidence === "medium" ? "#FFB74D" : "#E57373", fontSize: 10, fontWeight: "600" }}>
-              {result.confidence === "high" ? "\u2713" : result.confidence === "medium" ? "\u26A0" : "\u2022"} {result.confidence_score ?? ""}% match
+              {result.confidence === "high" ? "\u2713" : result.confidence === "medium" ? "~" : "\u2022"}{" "}
+              {typeof result.confidence_score === "number" && !isNaN(result.confidence_score)
+                ? `${result.confidence_score}% match`
+                : result.confidence === "high" ? "High match" : result.confidence === "medium" ? "Approximate" : "Estimated"}
             </Text>
           </View>
         )}

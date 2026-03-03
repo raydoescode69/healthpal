@@ -1,5 +1,6 @@
 import "../global.css";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useColorScheme, Appearance } from "react-native";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -37,9 +38,12 @@ export default function RootLayout() {
   const segments = useSegments();
   const { session, setSession, setUser, setProfile } = useAuthStore();
   const mode = useThemeStore((s) => s.mode);
+  const syncWithSystem = useThemeStore((s) => s.syncWithSystem);
+  const systemColorScheme = useColorScheme();
 
   const [showSplash, setShowSplash] = useState(true);
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
+  const [authCheckDone, setAuthCheckDone] = useState(false);
 
   useLiveActivity();
   useAndroidNotification();
@@ -64,6 +68,18 @@ export default function RootLayout() {
     }
   }, [session?.user?.id]);
 
+  // Sync theme with system color scheme
+  useEffect(() => {
+    syncWithSystem(systemColorScheme === "light" ? "light" : "dark");
+  }, [systemColorScheme]);
+
+  useEffect(() => {
+    const sub = Appearance.addChangeListener(({ colorScheme }) => {
+      syncWithSystem(colorScheme === "light" ? "light" : "dark");
+    });
+    return () => sub.remove();
+  }, []);
+
   const [fontsLoaded] = useFonts({
     Sora_400Regular,
     Sora_500Medium,
@@ -74,25 +90,36 @@ export default function RootLayout() {
     DMSans_700Bold,
   });
 
+  // Wait for the first onAuthStateChange event OR a 2s timeout before allowing navigation
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+      async (_event, sess) => {
+        setSession(sess);
+        setUser(sess?.user ?? null);
+        setAuthCheckDone(true);
 
-        if (session?.user?.id) {
+        if (sess?.user?.id) {
           try {
             const { data: profile } = await supabase
               .from("profiles")
               .select("*")
-              .eq("id", session.user.id)
+              .eq("id", sess.user.id)
               .single();
             if (profile) setProfile(profile);
           } catch {}
         }
       }
     );
-    return () => subscription.unsubscribe();
+
+    // Fallback: if onAuthStateChange doesn't fire within 2s, proceed anyway
+    const timeout = setTimeout(() => {
+      setAuthCheckDone(true);
+    }, 2000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   // Hide native splash as soon as our animated splash mounts
@@ -108,17 +135,33 @@ export default function RootLayout() {
     setShowSplash(false);
   }, []);
 
+  // Force-dismiss splash after 3s as a safety net
   useEffect(() => {
-    if (!fontsLoaded) return;
+    const forceDismiss = setTimeout(() => {
+      setShowSplash(false);
+    }, 3000);
+    return () => clearTimeout(forceDismiss);
+  }, []);
+
+  // Route protection: only navigate after auth state is resolved
+  useEffect(() => {
+    if (!fontsLoaded || !authCheckDone) return;
 
     const inAuth = segments[0] === "(auth)";
 
     if (!session && !inAuth) {
       router.replace("/(auth)");
     } else if (session && inAuth) {
-      router.replace("/(main)/chat");
+      // Check if profile has required fields for nutrition calculations
+      const profile = useAuthStore.getState().profile;
+      const isProfileComplete = profile?.age && profile?.weight_kg && profile?.height_cm;
+      if (isProfileComplete) {
+        router.replace("/(main)/chat");
+      } else {
+        router.replace("/(auth)/onboarding");
+      }
     }
-  }, [session, fontsLoaded, segments]);
+  }, [session, fontsLoaded, authCheckDone, segments]);
 
   if (!fontsLoaded) {
     return (

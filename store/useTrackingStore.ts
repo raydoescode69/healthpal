@@ -12,6 +12,8 @@ interface DailySummary {
 interface TrackingState {
   foodLogs: FoodLog[];
   waterGlasses: number;
+  steps: number;
+  stepGoal: number;
   isLoading: boolean;
   lastResetDate: string;
   selectedDate: string;
@@ -29,6 +31,8 @@ interface TrackingState {
   deleteFoodLog: (logId: string) => Promise<void>;
   getDailySummary: () => DailySummary;
   addWater: (count: number) => void;
+  addSteps: (count: number) => void;
+  setStepGoal: (goal: number) => void;
   resetIfNewDay: () => void;
 }
 
@@ -42,9 +46,17 @@ function todayStart() {
   return d.toISOString();
 }
 
+function todayEnd() {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+
 export const useTrackingStore = create<TrackingState>()((set, get) => ({
   foodLogs: [],
   waterGlasses: 0,
+  steps: 0,
+  stepGoal: 10000,
   isLoading: false,
   lastResetDate: todayStr(),
   selectedDate: todayStr(),
@@ -58,6 +70,7 @@ export const useTrackingStore = create<TrackingState>()((set, get) => ({
         .select("*")
         .eq("user_id", userId)
         .gte("logged_at", todayStart())
+        .lte("logged_at", todayEnd())
         .order("logged_at", { ascending: true });
 
       if (error) throw error;
@@ -171,10 +184,19 @@ export const useTrackingStore = create<TrackingState>()((set, get) => ({
     set((s) => ({ waterGlasses: s.waterGlasses + count }));
   },
 
+  addSteps: (count) => {
+    get().resetIfNewDay();
+    set((s) => ({ steps: s.steps + count }));
+  },
+
+  setStepGoal: (goal) => {
+    set({ stepGoal: goal });
+  },
+
   resetIfNewDay: () => {
     const today = todayStr();
     if (get().lastResetDate !== today) {
-      set({ waterGlasses: 0, foodLogs: [], lastResetDate: today });
+      set({ waterGlasses: 0, steps: 0, foodLogs: [], lastResetDate: today });
     }
   },
 }));

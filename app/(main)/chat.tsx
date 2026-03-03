@@ -40,7 +40,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useTrackingStore } from "../../store/useTrackingStore";
 import { useThemeStore } from "../../store/useThemeStore";
-import { sendMessage, generateWelcome } from "../../lib/chatEngine";
+import { sendMessage, generateWelcome, parseResponse } from "../../lib/chatEngine";
 import { analyzeFoodFromText } from "../../lib/foodAnalyzer";
 import { QUICK_ACTIONS } from "../../lib/types";
 import type { DietPlanData, ConversationItem, PinnedMessage, FoodAnalysisResult } from "../../lib/types";
@@ -49,8 +49,15 @@ import DietPlanCardComponent from "../../components/DietPlanCard";
 import CalorieLogCard from "../../components/CalorieLogCard";
 import ChatSidebar from "../../components/ChatSidebar";
 import FoodLogModal from "../../components/FoodLogModal";
-import VoiceMode from "../../components/VoiceMode";
-import { requestRecordingPermissionsAsync } from "expo-audio";
+import { useVoiceChat } from "../../components/VoiceMode";
+import VoiceInputBar from "../../components/VoiceInputBar";
+import {
+  requestRecordingPermissionsAsync,
+  useAudioRecorder,
+  setAudioModeAsync,
+  RecordingPresets,
+} from "expo-audio";
+import { speechToText } from "../../lib/cartesiaService";
 import { unregisterPushToken } from "../../lib/notificationService";
 import { dismissCalorieNotification } from "../../lib/androidNotificationService";
 
@@ -60,15 +67,13 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 // ── Quick action icon mapping ────────────────────────────────
 const QUICK_ACTION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  "Get Diet Plan": "nutrition-outline",
-  "Track Calories": "analytics-outline",
-  "Order Food": "fast-food-outline",
+  "Diet Plan": "nutrition-outline",
+  "Log Food": "camera-outline",
 };
 
 const QUICK_ACTION_DESCS: Record<string, string> = {
-  "Get Diet Plan": "AI-powered 7-day meal plan for you",
-  "Track Calories": "Snap a photo to track your meal",
-  "Order Food": "Get healthy food suggestions to order",
+  "Diet Plan": "Personalized 7-day meal plan",
+  "Log Food": "Photo, camera, or type it in",
 };
 
 // ── Display types ──────────────────────────────────────────────
@@ -193,6 +198,20 @@ function tryParseDietPlanFromText(text: string): DietPlanData | null {
   return null;
 }
 
+// Strip any leaked JSON / code blocks / DIET_PLAN markers from display text
+function cleanBubbleText(text: string): string {
+  let cleaned = text;
+  // Remove DIET_PLAN: followed by JSON
+  cleaned = cleaned.replace(/DIET_PLAN:\s*\{[\s\S]*$/g, "");
+  // Remove code blocks containing JSON
+  cleaned = cleaned.replace(/```(?:json)?\s*\{[\s\S]*?```/g, "");
+  // Remove any large JSON objects (50+ chars with curly braces)
+  cleaned = cleaned.replace(/\{[^{}]*"[^"]*"\s*:\s*[\s\S]{50,}\}/g, "");
+  // Remove leftover ``` markers
+  cleaned = cleaned.replace(/```/g, "");
+  return cleaned.trim();
+}
+
 function MessageBubble({
   item,
   isPinned,
@@ -268,7 +287,7 @@ function MessageBubble({
             color: isUser ? colors.bubbleUserText : colors.bubbleBotText,
           }}
         >
-          {item.content}
+          {isUser ? item.content : cleanBubbleText(item.content)}
         </Text>
       </View>
     </Pressable>
@@ -328,75 +347,6 @@ function SwipeableMessage({
         </Animated.View>
       </GestureDetector>
     </View>
-  );
-}
-
-// ── Draggable FAB ───────────────────────────────────────────────
-const FAB_SIZE = 48;
-
-function DraggableFAB({ onPress }: { onPress: () => void }) {
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const offsetX = useSharedValue(0);
-  const offsetY = useSharedValue(0);
-  const scale = useSharedValue(1);
-
-  const tap = Gesture.Tap().onEnd(() => {
-    runOnJS(onPress)();
-  });
-
-  const pan = Gesture.Pan()
-    .minDistance(8)
-    .onStart(() => {
-      offsetX.value = translateX.value;
-      offsetY.value = translateY.value;
-      scale.value = withSpring(1.1, { damping: 15 });
-    })
-    .onUpdate((e) => {
-      translateX.value = offsetX.value + e.translationX;
-      translateY.value = offsetY.value + e.translationY;
-    })
-    .onEnd(() => {
-      scale.value = withSpring(1, { damping: 15 });
-    });
-
-  const gesture = Gesture.Race(pan, tap);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-  }));
-
-  return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View
-        style={[
-          {
-            position: "absolute",
-            bottom: 16,
-            right: 16,
-            width: FAB_SIZE,
-            height: FAB_SIZE,
-            borderRadius: FAB_SIZE / 2,
-            backgroundColor: "#A8FF3E",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 10,
-            elevation: 5,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.3,
-            shadowRadius: 4,
-          },
-          animStyle,
-        ]}
-      >
-        <Text style={{ fontSize: 13, fontWeight: "800", color: "#000" }}>Log+</Text>
-      </Animated.View>
-    </GestureDetector>
   );
 }
 
@@ -568,6 +518,8 @@ function WaterPrompt({
 }
 
 // ── Context Menu Modal (WhatsApp-style) ─────────────────────────
+const CONTEXT_MENU_WIDTH = 220;
+
 function ContextMenuModal({
   visible,
   onClose,
@@ -576,6 +528,8 @@ function ContextMenuModal({
   onPin,
   isPinned,
   menuY,
+  menuX,
+  isUserMessage,
   colors,
 }: {
   visible: boolean;
@@ -585,44 +539,66 @@ function ContextMenuModal({
   onPin: () => void;
   isPinned: boolean;
   menuY: number;
+  menuX: number;
+  isUserMessage: boolean;
   colors: typeof THEMES.dark;
 }) {
   const options = [
     { label: "Reply", icon: "arrow-undo-outline" as keyof typeof Ionicons.glyphMap, action: onReply },
     { label: "Copy", icon: "copy-outline" as keyof typeof Ionicons.glyphMap, action: onCopy },
-    { label: isPinned ? "Unpin" : "Pin", icon: "pin-outline" as keyof typeof Ionicons.glyphMap, action: onPin },
+    { label: isPinned ? "Unpin" : "Pin", icon: (isPinned ? "pin-outline" : "pin") as keyof typeof Ionicons.glyphMap, action: onPin },
   ];
 
-  const MENU_HEIGHT = options.length * 68 + 20; // rough estimate
-  const isBottomHalf = menuY > SCREEN_H / 2;
-  const clampedTop = isBottomHalf
-    ? Math.max(40, menuY - MENU_HEIGHT - 10)
-    : Math.min(SCREEN_H - MENU_HEIGHT - 40, menuY + 10);
+  const ITEM_HEIGHT = 56;
+  const MENU_PADDING = 12;
+  const MENU_HEIGHT = options.length * ITEM_HEIGHT + MENU_PADDING * 2;
+
+  // Vertical: prefer showing below the press point, flip above if near bottom
+  const isNearBottom = menuY + MENU_HEIGHT + 20 > SCREEN_H;
+  const clampedTop = isNearBottom
+    ? Math.max(40, menuY - MENU_HEIGHT - 8)
+    : menuY + 8;
+
+  // Horizontal: anchor near the bubble — right-aligned for user msgs, left-aligned for bot
+  const horizontalMargin = 16;
+  let menuLeft: number;
+  if (isUserMessage) {
+    menuLeft = Math.max(horizontalMargin, SCREEN_W - CONTEXT_MENU_WIDTH - horizontalMargin);
+  } else {
+    menuLeft = horizontalMargin;
+  }
+  // If we have an actual press X coordinate, use it to better anchor
+  if (menuX > 0) {
+    const preferred = isUserMessage
+      ? Math.min(menuX, SCREEN_W - CONTEXT_MENU_WIDTH - horizontalMargin)
+      : Math.max(horizontalMargin, menuX - CONTEXT_MENU_WIDTH / 2);
+    menuLeft = Math.max(horizontalMargin, Math.min(preferred, SCREEN_W - CONTEXT_MENU_WIDTH - horizontalMargin));
+  }
+
+  const isDark = colors === THEMES.dark;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <Pressable
-        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }}
+        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)" }}
         onPress={onClose}
       >
-        <Pressable
-          onPress={() => {}}
+        <Animated.View
+          entering={FadeIn.duration(150)}
           style={{
             position: "absolute",
             top: clampedTop,
-            alignSelf: "center",
-            left: (SCREEN_W - Math.min(SCREEN_W * 0.78, 300)) / 2,
-            backgroundColor: colors.contextMenuBg,
-            borderRadius: 20,
-            width: Math.min(SCREEN_W * 0.78, 300),
-            paddingVertical: 10,
-            borderWidth: 1,
-            borderColor: colors.contextMenuBorder,
+            left: menuLeft,
+            width: CONTEXT_MENU_WIDTH,
+            backgroundColor: isDark ? "rgba(44,44,46,0.98)" : "rgba(255,255,255,0.98)",
+            borderRadius: 14,
+            paddingVertical: MENU_PADDING,
             shadowColor: "#000",
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.35,
-            shadowRadius: 12,
-            elevation: 10,
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: isDark ? 0.5 : 0.15,
+            shadowRadius: 20,
+            elevation: 12,
+            overflow: "hidden",
           }}
         >
           {options.map((opt, i) => (
@@ -633,24 +609,29 @@ function ContextMenuModal({
                 opt.action();
               }}
               style={({ pressed }) => ({
-                paddingHorizontal: 24,
-                paddingVertical: 16,
-                backgroundColor: pressed ? (colors === THEMES.dark ? "#2a2a2a" : "#F0F0F0") : "transparent",
-                borderBottomWidth: i < options.length - 1 ? 0.5 : 0,
-                borderBottomColor: colors.contextMenuBorder,
+                paddingHorizontal: 16,
+                height: ITEM_HEIGHT,
+                backgroundColor: pressed ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
               })}
             >
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.widgetIconBg, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name={opt.icon} size={20} color={colors.accent} />
-                </View>
-                <Text style={{ color: colors.contextMenuText, fontSize: 16, fontWeight: "600", marginLeft: 14 }}>
+              <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name={opt.icon}
+                  size={20}
+                  color={opt.label === "Unpin" ? "#FF6B6B" : (isDark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.5)")}
+                />
+                <Text style={{
+                  color: opt.label === "Unpin" ? "#FF6B6B" : (isDark ? "#fff" : "#1a1a1a"),
+                  fontSize: 16,
+                  fontWeight: "500",
+                  marginLeft: 12,
+                }}>
                   {opt.label}
                 </Text>
               </View>
             </Pressable>
           ))}
-        </Pressable>
+        </Animated.View>
       </Pressable>
     </Modal>
   );
@@ -669,7 +650,6 @@ export default function ChatScreen() {
 
   // Theme
   const mode = useThemeStore((s) => s.mode);
-  const toggleMode = useThemeStore((s) => s.toggleMode);
   const colors = THEMES[mode];
 
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -710,12 +690,19 @@ export default function ChatScreen() {
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [contextMenuItem, setContextMenuItem] = useState<DisplayMessage | null>(null);
   const [contextMenuY, setContextMenuY] = useState(0);
+  const [contextMenuX, setContextMenuX] = useState(0);
 
   // Quick actions popup state
   const [showQuickActions, setShowQuickActions] = useState(false);
 
-  // Voice mode state
-  const [showVoiceMode, setShowVoiceMode] = useState(false);
+  // Voice mode state (inline)
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isRecordingVoiceNote, setIsRecordingVoiceNote] = useState(false);
+  const [isTranscribingNote, setIsTranscribingNote] = useState(false);
+  const voiceNoteRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  // Dashboard update toast
+  const [showDashboardToast, setShowDashboardToast] = useState(false);
 
   // Smart scroll tracking
   const isNearBottomRef = useRef(true);
@@ -740,9 +727,16 @@ export default function ChatScreen() {
 
   const userId = session?.user?.id || "";
 
-  // Sync listData when messages change
+  // Sync listData when messages change — preserve diet cards
   useEffect(() => {
-    setListData([...messages]);
+    setListData((prev) => {
+      // Keep all existing diet cards from the current list
+      const existingDietCards = prev.filter((item) => isDietCard(item));
+      // Build a new list: all messages + diet cards interleaved by created_at
+      const merged: FlatListItem[] = [...messages, ...existingDietCards];
+      merged.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      return merged;
+    });
   }, [messages]);
 
   // ── Load chat history + food logs on mount ──────────────────
@@ -750,6 +744,12 @@ export default function ChatScreen() {
     if (!userId) return;
     loadLatestConversation();
     loadTodayLogs(userId);
+
+    // Safety: force dismiss loading screen after 5s if stuck
+    const timeout = setTimeout(() => {
+      setLoadingHistory(false);
+    }, 5000);
+    return () => clearTimeout(timeout);
   }, [userId]);
 
   // ── Supabase Realtime: listen for followup messages ────────
@@ -813,13 +813,16 @@ export default function ChatScreen() {
   }, [navConversationId, userId]);
 
   const loadLatestConversation = async () => {
+    console.log("[Chat] loadLatestConversation called, userId:", userId);
     try {
-      const { data: convs } = await supabase
+      const { data: convs, error: convsError } = await supabase
         .from("conversations")
         .select("id, title, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(1);
+
+      console.log("[Chat] Conversations found:", convs?.length || 0, convsError?.message || "OK");
 
       if (convs && convs.length > 0) {
         const latestConv = convs[0];
@@ -828,13 +831,15 @@ export default function ChatScreen() {
         await loadDietPlanFlag(latestConv.id);
         loadPinnedMessages(latestConv.id);
 
-        const { data: msgs } = await supabase
+        const { data: msgs, error: msgsError } = await supabase
           .from("messages")
           .select("*")
           .eq("user_id", userId)
           .eq("conversation_id", latestConv.id)
           .order("created_at", { ascending: true })
-          .limit(50);
+          .limit(1000);
+
+        console.log("[Chat] Messages loaded:", msgs?.length || 0, msgsError?.message || "OK");
 
         if (msgs && msgs.length > 0) {
           setMessages(msgs);
@@ -845,7 +850,8 @@ export default function ChatScreen() {
 
       setLoadingHistory(false);
       sendWelcome();
-    } catch {
+    } catch (e) {
+      console.warn("[Chat] loadLatestConversation error:", e);
       setLoadingHistory(false);
       sendWelcome();
     }
@@ -875,26 +881,49 @@ export default function ChatScreen() {
     setShowTypingIndicator(true);
 
     try {
-      const welcomeText = await generateWelcome(userId);
+      // Check if this is the user's very first time (no intro shown yet)
+      const introKey = `nyra_intro_shown_${userId}`;
+      const introShown = await AsyncStorage.getItem(introKey);
+      const isFirstEver = !introShown;
+
+      const welcomeText = await generateWelcome(userId, isFirstEver);
       setShowTypingIndicator(false);
 
-      const welcomeId = Crypto.randomUUID();
-      const botMsg: DisplayMessage = {
-        id: welcomeId,
+      // Mark intro as shown
+      if (isFirstEver) {
+        await AsyncStorage.setItem(introKey, "true");
+      }
+
+      // Split the welcome text into multiple bubbles using parseResponse
+      const parsed = parseResponse(welcomeText);
+      const bubbles = parsed.bubbles.length > 0 ? parsed.bubbles : [welcomeText];
+
+      // Ensure conversation exists in DB before saving messages
+      await ensureConversation("New Chat");
+
+      // Show the first bubble immediately
+      const firstBubbleId = Crypto.randomUUID();
+      const firstMsg: DisplayMessage = {
+        id: firstBubbleId,
         role: "assistant",
-        content: welcomeText,
+        content: bubbles[0],
         created_at: new Date().toISOString(),
       };
+      setMessages([firstMsg]);
+      setCurrentBubbleText(bubbles[0]);
+      saveMessage("assistant", bubbles[0], firstBubbleId);
 
-      setMessages([botMsg]);
-      setCurrentBubbleText(welcomeText);
-      saveMessage("assistant", welcomeText, welcomeId);
+      // Queue remaining bubbles for sequential display
+      if (bubbles.length > 1) {
+        bubbleQueueRef.current = bubbles.slice(1);
+        isProcessingBubblesRef.current = false;
+      }
     } catch {
       setShowTypingIndicator(false);
       const fallbackMsg: DisplayMessage = {
         id: Crypto.randomUUID(),
         role: "assistant",
-        content: "yo bhai! kya scene hai? health related kuch bhi puchna ho toh bol \uD83D\uDCAA",
+        content: "hey! I'm Nyra, your nutrition companion. Ask me anything about health, track your calories, or get a personalized diet plan!",
         created_at: new Date().toISOString(),
       };
       setMessages([fallbackMsg]);
@@ -950,18 +979,22 @@ export default function ChatScreen() {
     loadPinnedMessages(conv.id);
 
     try {
-      const { data: msgs } = await supabase
+      const { data: msgs, error } = await supabase
         .from("messages")
         .select("*")
         .eq("user_id", userId)
         .eq("conversation_id", conv.id)
         .order("created_at", { ascending: true })
-        .limit(50);
+        .limit(1000);
+
+      if (error) console.warn("[DB] Load conversation messages failed:", error.message);
 
       if (msgs && msgs.length > 0) {
         setMessages(msgs);
       }
-    } catch {}
+    } catch (e) {
+      console.warn("[DB] handleSelectConversation error:", e);
+    }
   };
 
   // ── Save message to DB ─────────────────────────────────────
@@ -1127,8 +1160,9 @@ export default function ChatScreen() {
   // ── Context menu handlers ─────────────────────────────────
   const handleLongPress = useCallback((item: DisplayMessage, event: GestureResponderEvent) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const { pageY } = event.nativeEvent;
+    const { pageY, pageX } = event.nativeEvent;
     setContextMenuY(pageY);
+    setContextMenuX(pageX);
     setContextMenuItem(item);
     setContextMenuVisible(true);
   }, []);
@@ -1172,7 +1206,9 @@ export default function ChatScreen() {
   const processBubbleQueue = useCallback(() => {
     if (isProcessingBubblesRef.current) return;
     if (bubbleQueueRef.current.length === 0) {
+      console.log("[Chat] bubbleQueue empty, pendingDietPlan:", !!pendingDietPlanRef.current);
       if (pendingDietPlanRef.current) {
+        console.log("[Chat] Adding diet card to listData");
         const plan = pendingDietPlanRef.current;
         pendingDietPlanRef.current = null;
         setListData((prev) => [
@@ -1273,21 +1309,61 @@ export default function ChatScreen() {
 
       setShowTypingIndicator(false);
 
+      console.log("[Chat] response.dietPlan:", !!response.dietPlan, "bubbles:", response.bubbles?.length, "dietPlanShownRef:", dietPlanShownRef.current);
       if (response.dietPlan) {
+        console.log("[Chat] Setting pendingDietPlan, days:", response.dietPlan.days?.length);
         pendingDietPlanRef.current = response.dietPlan;
         markDietPlanShown(conversationIdRef.current);
       }
 
-      bubbleQueueRef.current = [...response.bubbles];
-      isProcessingBubblesRef.current = false;
-      processBubbleQueue();
+      // Auto-log food if intent was detected
+      if (response.foodLogResult) {
+        try {
+          await saveFoodLog(userId, response.foodLogResult);
+          setShowDashboardToast(true);
+          setTimeout(() => setShowDashboardToast(false), 2500);
+          const cardContent = `${FOOD_LOG_PREFIX}${JSON.stringify(response.foodLogResult)}`;
+          const foodCardId = Crypto.randomUUID();
+          const foodCardMsg: DisplayMessage = {
+            id: foodCardId,
+            role: "assistant",
+            content: cardContent,
+            created_at: new Date().toISOString(),
+          };
+          // Queue the food card to show after text bubbles
+          const originalBubbles = [...response.bubbles];
+          bubbleQueueRef.current = originalBubbles;
+          isProcessingBubblesRef.current = false;
+          // We'll append the food card after all bubbles process
+          const waitForBubbles = () => {
+            if (bubbleQueueRef.current.length === 0 && !isProcessingBubblesRef.current) {
+              setMessages((prev) => [...prev, foodCardMsg]);
+              saveMessage("assistant", cardContent, foodCardId);
+              scrollToEnd();
+            } else {
+              setTimeout(waitForBubbles, 300);
+            }
+          };
+          processBubbleQueue();
+          setTimeout(waitForBubbles, 500);
+        } catch {
+          // Food log save failed, still show text response
+          bubbleQueueRef.current = [...response.bubbles];
+          isProcessingBubblesRef.current = false;
+          processBubbleQueue();
+        }
+      } else {
+        bubbleQueueRef.current = [...response.bubbles];
+        isProcessingBubblesRef.current = false;
+        processBubbleQueue();
+      }
     } catch {
       setShowTypingIndicator(false);
       setIsLoading(false);
       const errMsg: DisplayMessage = {
         id: Crypto.randomUUID(),
         role: "assistant",
-        content: "arre yaar connection issue lag raha hai \uD83D\uDE05 internet check karke try again?",
+        content: "looks like there's a connection issue \uD83D\uDE05 check your internet and try again?",
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errMsg]);
@@ -1297,7 +1373,7 @@ export default function ChatScreen() {
   // ── Quick action handlers ──────────────────────────────────
   const handleQuickAction = (label: string) => {
     switch (label) {
-      case "Get Diet Plan": {
+      case "Diet Plan": {
         const dietIndex = listData.findIndex((item) => isDietCard(item));
         if (dietIndex >= 0) {
           flatListRef.current?.scrollToIndex({ index: dietIndex, animated: true, viewPosition: 0.3 });
@@ -1306,13 +1382,10 @@ export default function ChatScreen() {
         }
         break;
       }
-      case "Track Calories":
+      case "Log Food":
         setShowWaterPrompt(false);
         setShowFoodPrompt(false);
         setShowFoodLogModal(true);
-        break;
-      case "Order Food":
-        handleSend("Suggest me some healthy food I can order online right now");
         break;
       default:
         handleSend(label);
@@ -1339,6 +1412,8 @@ export default function ChatScreen() {
 
       const result = await analyzeFoodFromText(food);
       await saveFoodLog(userId, result);
+      setShowDashboardToast(true);
+      setTimeout(() => setShowDashboardToast(false), 2500);
 
       setShowTypingIndicator(false);
 
@@ -1359,7 +1434,7 @@ export default function ChatScreen() {
       const errMsg: DisplayMessage = {
         id: Crypto.randomUUID(),
         role: "assistant",
-        content: "arre yaar food analyze nahi ho paya \uD83D\uDE05 try again?",
+        content: "couldn't analyze that food \uD83D\uDE05 try again?",
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errMsg]);
@@ -1375,6 +1450,8 @@ export default function ChatScreen() {
       forceScrollToEnd();
 
       await saveFoodLog(userId, result, imageUri);
+      setShowDashboardToast(true);
+      setTimeout(() => setShowDashboardToast(false), 2500);
 
       setShowTypingIndicator(false);
 
@@ -1396,7 +1473,7 @@ export default function ChatScreen() {
       const errMsg: DisplayMessage = {
         id: Crypto.randomUUID(),
         role: "assistant",
-        content: "food save nahi ho paya bhai \uD83D\uDE15 try again?",
+        content: "couldn't save that food log \uD83D\uDE15 try again?",
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errMsg]);
@@ -1438,6 +1515,77 @@ export default function ChatScreen() {
     forceScrollToEnd();
   }, []);
 
+  // ── Inline voice chat hook ──────────────────────────────────
+  const voiceChat = useVoiceChat({
+    userId,
+    conversationId: conversationIdRef.current,
+    messageHistory: messages.slice(-10).map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+    dietPlanAlreadyShown: dietPlanShownRef.current,
+    onNewMessages: handleVoiceMessages,
+  });
+
+  const startVoiceMode = useCallback(async () => {
+    const perm = await requestRecordingPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Microphone access is required for voice mode.");
+      return;
+    }
+    setIsVoiceMode(true);
+    voiceChat.start();
+  }, [voiceChat]);
+
+  const endVoiceMode = useCallback(() => {
+    voiceChat.end();
+    setIsVoiceMode(false);
+  }, [voiceChat]);
+
+  // ── Voice note (tap-to-record in input bar) ───────────────
+  const startVoiceNoteRecording = useCallback(async () => {
+    const perm = await requestRecordingPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Microphone access is required for voice notes.");
+      return;
+    }
+    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+    await voiceNoteRecorder.prepareToRecordAsync();
+    voiceNoteRecorder.record();
+    setIsRecordingVoiceNote(true);
+  }, [voiceNoteRecorder]);
+
+  const stopVoiceNoteAndSend = useCallback(async () => {
+    setIsRecordingVoiceNote(false);
+    setIsTranscribingNote(true);
+    try {
+      await voiceNoteRecorder.stop();
+      const uri = voiceNoteRecorder.uri;
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      if (!uri) {
+        setIsTranscribingNote(false);
+        return;
+      }
+      const text = await speechToText(uri);
+      setIsTranscribingNote(false);
+      if (text.trim()) {
+        handleSend(text.trim());
+      }
+    } catch (e) {
+      console.error("[VoiceNote] Error:", e);
+      setIsTranscribingNote(false);
+      Alert.alert("Voice note failed", "Could not transcribe your voice note. Please try again.");
+    }
+  }, [voiceNoteRecorder, handleSend]);
+
+  const toggleVoiceNote = useCallback(() => {
+    if (isRecordingVoiceNote) {
+      stopVoiceNoteAndSend();
+    } else {
+      startVoiceNoteRecording();
+    }
+  }, [isRecordingVoiceNote, stopVoiceNoteAndSend, startVoiceNoteRecording]);
+
   // ── Loading screen ─────────────────────────────────────────
   if (loadingHistory) {
     return (
@@ -1458,7 +1606,6 @@ export default function ChatScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "android" ? 20 : 0}
       >
         {/* Header */}
         <View
@@ -1499,13 +1646,13 @@ export default function ChatScreen() {
               })}
             >
               <Text style={{ fontSize: 17, color: colors.headerText, fontWeight: "600" }}>
-                Nyra {"\uD83C\uDF3F"}
+                Nyra
               </Text>
             </Pressable>
 
-            {/* Dark/Light mode toggle */}
+            {/* Voice Mode toggle */}
             <Pressable
-              onPress={toggleMode}
+              onPress={isVoiceMode ? endVoiceMode : startVoiceMode}
               style={({ pressed }) => ({
                 width: 36,
                 height: 36,
@@ -1513,12 +1660,13 @@ export default function ChatScreen() {
                 alignItems: "center",
                 justifyContent: "center",
                 opacity: pressed ? 0.5 : 1,
+                backgroundColor: isVoiceMode ? colors.accent + "20" : "transparent",
               })}
             >
               <Ionicons
-                name={mode === "dark" ? "sunny-outline" : "moon-outline"}
+                name={isVoiceMode ? "close" : "headset-outline"}
                 size={20}
-                color={colors.subText}
+                color={isVoiceMode ? colors.accent : colors.subText}
               />
             </Pressable>
           </View>
@@ -1534,8 +1682,8 @@ export default function ChatScreen() {
           />
         )}
 
-        {/* Messages + FAB container */}
-        <View style={{ flex: 1 }} onTouchStart={Keyboard.dismiss}>
+        {/* Messages container */}
+        <View style={{ flex: 1 }}>
               <FlatList
                 ref={flatListRef}
                 data={listData}
@@ -1613,8 +1761,6 @@ export default function ChatScreen() {
                 }}
               />
 
-          {/* Draggable Floating Log Food FAB */}
-          {messages.length > 1 && <DraggableFAB onPress={() => setShowFoodLogModal(true)} />}
         </View>
 
         {/* Typing indicator */}
@@ -1639,13 +1785,8 @@ export default function ChatScreen() {
         {/* Bottom bar */}
         <View
           style={{
-            paddingBottom: insets.bottom + 4,
+            paddingBottom: 0,
             backgroundColor: colors.bg,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: -2 },
-            shadowOpacity: mode === "dark" ? 0.2 : 0.06,
-            shadowRadius: 4,
-            elevation: 3,
           }}
         >
           {/* Reply preview bar */}
@@ -1676,75 +1817,89 @@ export default function ChatScreen() {
             </View>
           )}
 
-          {/* Input */}
-          <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
+          {/* Input — voice or text mode */}
+          {isVoiceMode ? (
+            <VoiceInputBar
+              state={voiceChat.state}
+              transcript={voiceChat.transcript}
+              onStop={voiceChat.stop}
+              onEnd={endVoiceMode}
+              accentColor={colors.accent}
+              bgColor={colors.inputBg}
+              textColor={colors.inputText}
+              subTextColor={colors.inputPlaceholder}
+            />
+          ) : (
+          <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 0, flexDirection: "row", alignItems: "center" }}>
+            <Pressable
+              onPress={() => setShowQuickActions(true)}
+              style={({ pressed }) => ({
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.6 : 1,
+                marginRight: 6,
+                backgroundColor: pressed ? colors.accent + "20" : "transparent",
+              })}
+            >
+              <Ionicons name="add-circle-outline" size={24} color={colors.accent} />
+            </Pressable>
             <View style={{
+              flex: 1,
               flexDirection: "row",
               alignItems: "center",
-              backgroundColor: colors.inputBg,
+              backgroundColor: colors.inputBg + "99",
               borderRadius: 24,
               borderWidth: 1,
-              borderColor: colors.inputBorder,
-              paddingLeft: 6,
+              borderColor: colors.inputBorder + "60",
+              paddingLeft: 14,
               paddingRight: 4,
               minHeight: 48,
-              shadowColor: mode === "dark" ? "#000" : "#888",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: mode === "dark" ? 0.3 : 0.08,
-              shadowRadius: 3,
-              elevation: 1,
             }}>
-              <Pressable
-                onPress={() => setShowQuickActions(true)}
-                style={({ pressed }) => ({
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: pressed ? 0.5 : 1,
-                })}
-              >
-                <Ionicons name="grid-outline" size={20} color={colors.accent} />
-              </Pressable>
               <TextInput
                 ref={inputRef}
                 value={input}
                 onChangeText={setInput}
-                placeholder="Message..."
-                placeholderTextColor={colors.inputPlaceholder}
+                placeholder={isRecordingVoiceNote ? "Recording..." : isTranscribingNote ? "Transcribing..." : "Message..."}
+                placeholderTextColor={isRecordingVoiceNote ? "#FF4444" : colors.inputPlaceholder}
                 multiline
                 maxLength={1000}
+                editable={!isRecordingVoiceNote && !isTranscribingNote}
                 style={{
                   flex: 1,
                   color: colors.inputText,
-                  fontSize: 15,
-                  paddingVertical: 10,
-                  maxHeight: 96,
+                  fontSize: 16,
+                  paddingVertical: 12,
+                  maxHeight: 120,
                 }}
                 returnKeyType="send"
                 blurOnSubmit={false}
                 onSubmitEditing={() => handleSend()}
               />
               <Pressable
-                onPress={async () => {
-                  const perm = await requestRecordingPermissionsAsync();
-                  if (!perm.granted) {
-                    Alert.alert("Permission needed", "Microphone access is required for voice mode.");
-                    return;
-                  }
-                  setShowVoiceMode(true);
-                }}
+                onPress={toggleVoiceNote}
+                disabled={isTranscribingNote}
                 style={({ pressed }) => ({
                   width: 36,
                   height: 36,
                   borderRadius: 18,
                   alignItems: "center",
                   justifyContent: "center",
-                  opacity: pressed ? 0.4 : 0.85,
+                  opacity: isTranscribingNote ? 0.4 : pressed ? 0.4 : 0.85,
+                  backgroundColor: isRecordingVoiceNote ? "#FF4444" + "20" : "transparent",
                 })}
               >
-                <Ionicons name="mic-outline" size={22} color={colors.accent} />
+                {isTranscribingNote ? (
+                  <ActivityIndicator size="small" color={colors.accent} />
+                ) : (
+                  <Ionicons
+                    name={isRecordingVoiceNote ? "stop-circle" : "mic-outline"}
+                    size={22}
+                    color={isRecordingVoiceNote ? "#FF4444" : colors.accent}
+                  />
+                )}
               </Pressable>
               <Pressable
                 onPress={() => handleSend()}
@@ -1768,6 +1923,7 @@ export default function ChatScreen() {
               </Pressable>
             </View>
           </View>
+          )}
         </View>
       </KeyboardAvoidingView>
 
@@ -1780,6 +1936,8 @@ export default function ChatScreen() {
         onPin={handleContextPin}
         isPinned={contextMenuItem ? pinnedMessageIds.has(contextMenuItem.id) : false}
         menuY={contextMenuY}
+        menuX={contextMenuX}
+        isUserMessage={contextMenuItem?.role === "user"}
         colors={colors}
       />
 
@@ -1794,78 +1952,114 @@ export default function ChatScreen() {
       {/* Quick actions popup */}
       <Modal visible={showQuickActions} transparent animationType="fade" onRequestClose={() => setShowQuickActions(false)}>
         <Pressable
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }}
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}
           onPress={() => setShowQuickActions(false)}
         >
-          <Pressable onPress={() => {}} style={{ paddingBottom: insets.bottom + 70, paddingHorizontal: 20 }}>
+          <Pressable onPress={() => {}}>
             <View
               style={{
-                backgroundColor: colors.contextMenuBg,
-                borderRadius: 20,
-                padding: 18,
-                borderWidth: 1,
-                borderColor: colors.contextMenuBorder,
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: -4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 10,
-                elevation: 10,
+                backgroundColor: colors.cardBg,
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                paddingTop: 12,
+                paddingBottom: insets.bottom + 16,
               }}
             >
-              <Text style={{ color: colors.subText, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, marginBottom: 14, marginLeft: 4 }}>
-                Quick Actions
+              {/* Drag handle */}
+              <View style={{ alignItems: "center", marginBottom: 16 }}>
+                <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.textFaint + "50" }} />
+              </View>
+
+              {/* Title */}
+              <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", paddingHorizontal: 20, marginBottom: 16 }}>
+                Tools
               </Text>
-              <View style={{ gap: 8 }}>
-                {QUICK_ACTIONS.map((action) => {
-                  const iconName = QUICK_ACTION_ICONS[action.label] || "ellipse-outline";
-                  const desc = QUICK_ACTION_DESCS[action.label] || "";
-                  return (
-                    <Pressable
-                      key={action.label}
-                      onPress={() => {
-                        setShowQuickActions(false);
-                        handleQuickAction(action.label);
-                      }}
-                      disabled={isLoading}
-                      style={({ pressed }) => ({
-                        backgroundColor: pressed ? colors.widgetBorder : colors.widgetBg,
-                        borderRadius: 14,
-                        borderWidth: 1,
-                        borderColor: colors.widgetBorder,
-                        paddingVertical: 14,
-                        paddingHorizontal: 14,
-                      })}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <View style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 12,
-                          backgroundColor: colors.widgetIconBg,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: 14,
-                        }}>
-                          <Ionicons name={iconName} size={20} color={colors.accent} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "600" }}>
-                            {action.label}
-                          </Text>
-                          <Text style={{ color: colors.subText, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
-                            {desc}
-                          </Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+
+              {/* Options */}
+              <View style={{ paddingHorizontal: 20, gap: 10 }}>
+              {QUICK_ACTIONS.map((action) => {
+                const iconName = QUICK_ACTION_ICONS[action.label] || "ellipse-outline";
+                const desc = QUICK_ACTION_DESCS[action.label] || "";
+                return (
+                  <Pressable
+                    key={action.label}
+                    onPress={() => {
+                      setShowQuickActions(false);
+                      handleQuickAction(action.label);
+                    }}
+                    disabled={isLoading}
+                    style={({ pressed }) => ({
+                      backgroundColor: pressed ? colors.accent + "10" : colors.separator + "40",
+                      paddingVertical: 14,
+                      paddingHorizontal: 14,
+                      borderRadius: 14,
+                    })}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons name={iconName} size={22} color={colors.accent} style={{ marginRight: 14 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600" }}>
+                          {action.label}
+                        </Text>
+                        <Text style={{ color: colors.subText, fontSize: 12, marginTop: 2 }}>
+                          {desc}
+                        </Text>
                       </View>
-                    </Pressable>
-                  );
-                })}
+                      <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+              </View>
+
+              {/* Cancel */}
+              <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
+                <Pressable
+                  onPress={() => setShowQuickActions(false)}
+                  style={({ pressed }) => ({
+                    paddingVertical: 13,
+                    alignItems: "center",
+                    borderRadius: 12,
+                    backgroundColor: pressed ? colors.separator : colors.separator + "60",
+                  })}
+                >
+                  <Text style={{ color: colors.subText, fontSize: 15, fontWeight: "600" }}>Cancel</Text>
+                </Pressable>
               </View>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Dashboard update toast */}
+      {showDashboardToast && (
+        <Animated.View
+          entering={FadeIn.duration(300)}
+          style={{
+            position: "absolute",
+            top: insets.top + 60,
+            alignSelf: "center",
+            backgroundColor: colors.accent,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            borderRadius: 20,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 8,
+            zIndex: 999,
+          }}
+        >
+          <Ionicons name="checkmark-circle" size={18} color="#0D0D0D" />
+          <Text style={{ color: "#0D0D0D", fontSize: 13, fontWeight: "700" }}>
+            Dashboard updated
+          </Text>
+        </Animated.View>
+      )}
 
       {/* Sidebar overlay */}
       <ChatSidebar
@@ -1876,24 +2070,10 @@ export default function ChatScreen() {
         onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
         profile={profile}
+        session={session}
         onLogout={handleLogout}
       />
 
-      {/* Voice mode overlay — only mount when open so useAudioRecorder doesn't fire on chat mount */}
-      {showVoiceMode && (
-        <VoiceMode
-          visible={showVoiceMode}
-          onClose={() => setShowVoiceMode(false)}
-          userId={userId}
-          conversationId={conversationIdRef.current}
-          messageHistory={messages.slice(-10).map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          }))}
-          dietPlanAlreadyShown={dietPlanShownRef.current}
-          onNewMessages={handleVoiceMessages}
-        />
-      )}
     </View>
   );
 }

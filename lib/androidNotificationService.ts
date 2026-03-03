@@ -1,21 +1,25 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { calculateTargets, getMealSubtitle } from "./nutritionUtils";
 import type { UserProfile } from "./types";
+
+const isExpoGo = Constants.appOwnership === "expo";
 
 interface DailySummary {
   calories: number;
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  steps?: number;
+  waterGlasses?: number;
 }
 
 const NOTIFICATION_ID = "calorie-progress-sticky";
 
-function buildProgressBar(progress: number, width: number = 20): string {
-  const filled = Math.round(progress * width);
-  const empty = width - filled;
-  return "\u2588".repeat(filled) + "\u2591".repeat(empty);
+function formatSteps(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  return String(n);
 }
 
 function buildNotificationContent(
@@ -24,19 +28,12 @@ function buildNotificationContent(
 ) {
   const targets = calculateTargets(profile);
   const remaining = Math.max(targets.calories - consumed.calories, 0);
-  const progress = Math.min(consumed.calories / targets.calories, 1);
-  const pct = Math.round(progress * 100);
 
-  const title = `${consumed.calories.toLocaleString()} / ${targets.calories.toLocaleString()} cal (${pct}%)`;
-  const subtitle = getMealSubtitle(remaining);
+  const title = remaining > 0
+    ? `${consumed.calories} / ${targets.calories} kcal \u2022 ${remaining} left`
+    : `${consumed.calories} / ${targets.calories} kcal \u2022 Goal hit!`;
 
-  const macros = [
-    `P: ${consumed.protein_g}/${targets.protein}g`,
-    `C: ${consumed.carbs_g}/${targets.carbs}g`,
-    `F: ${consumed.fat_g}/${targets.fat}g`,
-  ].join("  |  ");
-
-  const body = `${buildProgressBar(progress)}\n${macros}\n${subtitle}`;
+  const body = `\uD83D\uDCAA ${consumed.protein_g}g pro    \uD83E\uDEE7 ${consumed.carbs_g}g carbs    \uD83E\uDD51 ${consumed.fat_g}g fat    \uD83D\uDC63 ${formatSteps(consumed.steps ?? 0)}    \uD83D\uDCA7 ${consumed.waterGlasses ?? 0}/8`;
 
   return { title, body };
 }
@@ -45,7 +42,7 @@ export async function showCalorieNotification(
   consumed: DailySummary,
   profile: Partial<UserProfile> | null | undefined
 ): Promise<void> {
-  if (Platform.OS !== "android") return;
+  if (Platform.OS !== "android" || isExpoGo) return;
 
   try {
     const { title, body } = buildNotificationContent(consumed, profile);
@@ -58,7 +55,7 @@ export async function showCalorieNotification(
         body,
         sticky: true,
         autoDismiss: false,
-        priority: Notifications.AndroidNotificationPriority.MAX,
+        priority: Notifications.AndroidNotificationPriority.LOW,
         data: { channelId: "calorie-progress" },
       },
       trigger: {
@@ -80,7 +77,7 @@ export async function updateCalorieNotification(
 }
 
 export async function dismissCalorieNotification(): Promise<void> {
-  if (Platform.OS !== "android") return;
+  if (Platform.OS !== "android" || isExpoGo) return;
   try {
     await Notifications.dismissNotificationAsync(NOTIFICATION_ID);
   } catch {

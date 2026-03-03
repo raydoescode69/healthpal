@@ -6,16 +6,14 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { analyzeFoodFromImage } from "../lib/foodAnalyzer";
 import { useThemeStore } from "../store/useThemeStore";
 import { THEMES } from "../lib/theme";
 import type { FoodAnalysisResult } from "../lib/types";
-
-const { width: SCREEN_W } = Dimensions.get("window");
 
 interface FoodLogModalProps {
   visible: boolean;
@@ -24,6 +22,12 @@ interface FoodLogModalProps {
   onFoodAnalyzed: (result: FoodAnalysisResult, imageUri?: string) => void;
 }
 
+const OPTIONS = [
+  { key: "type", icon: "create-outline" as const, label: "Type", desc: "Describe what you ate" },
+  { key: "camera", icon: "camera-outline" as const, label: "Camera", desc: "Snap your meal" },
+  { key: "gallery", icon: "images-outline" as const, label: "Gallery", desc: "Pick from photos" },
+];
+
 export default function FoodLogModal({
   visible,
   onClose,
@@ -31,12 +35,12 @@ export default function FoodLogModal({
   onFoodAnalyzed,
 }: FoodLogModalProps) {
   const [analyzing, setAnalyzing] = useState(false);
+  const insets = useSafeAreaInsets();
   const mode = useThemeStore((s) => s.mode);
   const colors = THEMES[mode];
 
   const handleImageAnalysis = async (source: "camera" | "gallery") => {
     try {
-      // Request permissions
       if (source === "camera") {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== "granted") {
@@ -65,10 +69,9 @@ export default function FoodLogModal({
       if (result.canceled || !result.assets?.[0]?.base64) return;
 
       const asset = result.assets[0];
-      const base64Data = asset.base64!;
       setAnalyzing(true);
 
-      const analysis = await analyzeFoodFromImage(base64Data, asset.uri);
+      const analysis = await analyzeFoodFromImage(asset.base64!, asset.uri);
       setAnalyzing(false);
       onClose();
       onFoodAnalyzed(analysis, asset.uri);
@@ -86,6 +89,15 @@ export default function FoodLogModal({
     onClose();
   };
 
+  const handleOption = (key: string) => {
+    if (key === "type") {
+      onClose();
+      onTypeFood();
+    } else {
+      handleImageAnalysis(key as "camera" | "gallery");
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -94,163 +106,84 @@ export default function FoodLogModal({
       onRequestClose={handleClose}
     >
       <Pressable
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.7)",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
+        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}
         onPress={handleClose}
       >
-        <Pressable
-          style={{
-            backgroundColor: colors.modalBg,
-            borderRadius: 20,
-            paddingVertical: 28,
-            paddingHorizontal: 24,
-            width: Math.min(SCREEN_W * 0.85, 340),
-            borderWidth: 1,
-            borderColor: colors.modalBorder,
-          }}
-          onPress={() => {}}
-        >
-          {analyzing ? (
-            <View style={{ alignItems: "center", paddingVertical: 24 }}>
-              <ActivityIndicator color={colors.accent} size="large" />
-              <Text
-                style={{
-                  color: colors.textTertiary,
-                  marginTop: 16,
-                  fontSize: 15,
-                  fontWeight: "500",
-                }}
-              >
-                Analyzing your food...
-              </Text>
+        <Pressable onPress={() => {}}>
+          <View
+            style={{
+              backgroundColor: colors.cardBg,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingTop: 12,
+              paddingBottom: insets.bottom + 16,
+            }}
+          >
+            {/* Drag handle */}
+            <View style={{ alignItems: "center", marginBottom: 16 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.textFaint + "50" }} />
             </View>
-          ) : (
-            <>
-              <Text
-                style={{
-                  color: colors.textPrimary,
-                  fontSize: 17,
-                  fontWeight: "700",
-                  marginBottom: 24,
-                  textAlign: "center",
-                }}
-              >
-                Log Food
-              </Text>
 
-              {/* Type and Add */}
-              <Pressable
-                onPress={() => {
-                  onClose();
-                  onTypeFood();
-                }}
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.modalOptionPressBg : colors.modalOptionBg,
-                  borderRadius: 14,
-                  padding: 16,
-                  marginBottom: 12,
-                })}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
+            {analyzing ? (
+              <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                <ActivityIndicator color={colors.accent} size="large" />
+                <Text style={{ color: colors.subText, marginTop: 14, fontSize: 15, fontWeight: "500" }}>
+                  Analyzing your food...
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* Title */}
+                <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", paddingHorizontal: 20, marginBottom: 16 }}>
+                  Track Calories
+                </Text>
+
+                {/* Options */}
+                <View style={{ paddingHorizontal: 20, gap: 10 }}>
+                {OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => handleOption(opt.key)}
+                    style={({ pressed }) => ({
+                      backgroundColor: pressed ? colors.accent + "10" : colors.separator + "40",
+                      paddingVertical: 14,
+                      paddingHorizontal: 14,
                       borderRadius: 14,
-                      backgroundColor: colors.accentDark,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: 14,
-                    }}
+                    })}
                   >
-                    <Ionicons name="keypad-outline" size={22} color={colors.accent} />
-                  </View>
-                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", flex: 1 }}>
-                    Type and Add
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons name={opt.icon} size={22} color={colors.accent} style={{ marginRight: 14 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600" }}>
+                          {opt.label}
+                        </Text>
+                        <Text style={{ color: colors.subText, fontSize: 12, marginTop: 2 }}>
+                          {opt.desc}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+                    </View>
+                  </Pressable>
+                ))}
                 </View>
-              </Pressable>
 
-              {/* Click and Add */}
-              <Pressable
-                onPress={() => handleImageAnalysis("camera")}
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.modalOptionPressBg : colors.modalOptionBg,
-                  borderRadius: 14,
-                  padding: 16,
-                  marginBottom: 12,
-                })}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 14,
-                      backgroundColor: colors.accentDark,
+                {/* Cancel */}
+                <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
+                  <Pressable
+                    onPress={handleClose}
+                    style={({ pressed }) => ({
+                      paddingVertical: 13,
                       alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: 14,
-                    }}
+                      borderRadius: 12,
+                      backgroundColor: pressed ? colors.separator : colors.separator + "60",
+                    })}
                   >
-                    <Ionicons name="camera-outline" size={22} color={colors.accent} />
-                  </View>
-                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", flex: 1 }}>
-                    Click and Add
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+                    <Text style={{ color: colors.subText, fontSize: 15, fontWeight: "600" }}>Cancel</Text>
+                  </Pressable>
                 </View>
-              </Pressable>
-
-              {/* Upload from Gallery */}
-              <Pressable
-                onPress={() => handleImageAnalysis("gallery")}
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.modalOptionPressBg : colors.modalOptionBg,
-                  borderRadius: 14,
-                  padding: 16,
-                  marginBottom: 12,
-                })}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 14,
-                      backgroundColor: colors.accentDark,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: 14,
-                    }}
-                  >
-                    <Ionicons name="images-outline" size={22} color={colors.accent} />
-                  </View>
-                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", flex: 1 }}>
-                    Upload from Gallery
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-                </View>
-              </Pressable>
-
-              {/* Cancel */}
-              <Pressable
-                onPress={handleClose}
-                style={({ pressed }) => ({
-                  alignItems: "center",
-                  paddingVertical: 8,
-                  opacity: pressed ? 0.5 : 1,
-                })}
-              >
-                <Text style={{ color: colors.subText, fontSize: 13 }}>Cancel</Text>
-              </Pressable>
-            </>
-          )}
+              </>
+            )}
+          </View>
         </Pressable>
       </Pressable>
     </Modal>

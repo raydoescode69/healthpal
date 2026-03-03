@@ -5,6 +5,7 @@ import {
   Pressable,
   FlatList,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +15,9 @@ import { useTrackingStore } from "../../store/useTrackingStore";
 import { useThemeStore } from "../../store/useThemeStore";
 import { THEMES, type ThemeColors } from "../../lib/theme";
 import { calculateTargets } from "../../lib/nutritionUtils";
+import { Ionicons } from "@expo/vector-icons";
+import ActivityRings from "../../components/ActivityRings";
+import { usePedometer } from "../../lib/usePedometer";
 import type { FoodLog } from "../../lib/types";
 
 const MEAL_EMOJI: Record<string, string> = {
@@ -44,85 +48,53 @@ function formatDateHeader(dateStr: string): string {
   return `${d.getDate()} ${months[d.getMonth()]} Nutrition`;
 }
 
-function ProgressBar({
-  current,
-  target,
-  color,
-  trackColor,
-}: {
-  current: number;
-  target: number;
-  color: string;
-  trackColor: string;
-}) {
-  const pct = Math.min((current / target) * 100, 100);
-  return (
-    <View
-      style={{
-        height: 6,
-        backgroundColor: trackColor,
-        borderRadius: 3,
-        overflow: "hidden",
-        marginTop: 6,
-      }}
-    >
-      <View
-        style={{
-          height: 6,
-          width: `${pct}%`,
-          backgroundColor: color,
-          borderRadius: 3,
-        }}
-      />
-    </View>
-  );
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function FoodLogRow({ item, colors }: { item: FoodLog; colors: ThemeColors }) {
+function FoodLogRow({ item, colors, onDelete }: { item: FoodLog; colors: ThemeColors; onDelete: () => void }) {
+  const emoji = MEAL_EMOJI[item.meal_type] || "\uD83C\uDF7D\uFE0F";
+  const mealLabel = capitalize(item.meal_type);
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Remove food log",
+      `Delete "${item.food_name}" (${item.calories} kcal)?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: onDelete },
+      ]
+    );
+  };
+
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: 12,
+        paddingVertical: 14,
         paddingHorizontal: 16,
         borderBottomWidth: 1,
         borderBottomColor: colors.separator,
       }}
     >
-      <View style={{ width: 32, marginRight: 12, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ fontSize: 24 }}>
-          {MEAL_EMOJI[item.meal_type] || "\uD83C\uDF7D\uFE0F"}
-        </Text>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text
-          style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500" }}
-          numberOfLines={1}
-        >
-          {item.food_name}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
-          <Text style={{ color: colors.subText, fontSize: 11 }}>
-            {formatTime(item.logged_at)}
-          </Text>
-          <View style={{ flexDirection: "row", marginLeft: 10, gap: 6 }}>
-            <Text style={{ color: "#4FC3F7", fontSize: 10, fontWeight: "600" }}>
-              {item.protein_g}g P
-            </Text>
-            <Text style={{ color: "#FFB74D", fontSize: 10, fontWeight: "600" }}>
-              {item.carbs_g}g C
-            </Text>
-            <Text style={{ color: "#E57373", fontSize: 10, fontWeight: "600" }}>
-              {item.fat_g}g F
-            </Text>
-          </View>
-        </View>
-      </View>
-      <Text style={{ color: colors.accent, fontSize: 15, fontWeight: "700" }}>
-        {item.calories}
+      <Text style={{ fontSize: 22, marginRight: 12 }}>{emoji}</Text>
+      <Text
+        style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500", flex: 1 }}
+        numberOfLines={1}
+      >
+        {mealLabel}: {item.food_name} - {item.calories} kcal
       </Text>
-      <Text style={{ color: colors.subText, fontSize: 11, marginLeft: 2 }}>cal</Text>
+      <Pressable
+        onPress={handleDelete}
+        hitSlop={8}
+        style={({ pressed }) => ({
+          opacity: pressed ? 0.5 : 0.6,
+          padding: 6,
+        })}
+      >
+        <Ionicons name="trash-outline" size={18} color="#E57373" />
+      </Pressable>
     </View>
   );
 }
@@ -175,15 +147,23 @@ export default function DashboardScreen() {
     selectedDate,
     loggedDates,
     getDailySummary,
+    deleteFoodLog,
+    waterGlasses,
+    steps,
+    stepGoal,
   } = useTrackingStore();
 
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const pedometer = usePedometer();
 
   const userId = session?.user?.id || "";
   const targets = calculateTargets(profile);
   const summary = getDailySummary();
   const todayDateStr = toDateStr(new Date());
   const calendarTheme = useMemo(() => getCalendarTheme(colors), [mode]);
+
+  // Use real pedometer steps when available, fall back to manual tracking
+  const displaySteps = pedometer.isAvailable ? pedometer.steps : steps;
 
   // Load today's logs + current month's logged dates on mount
   useEffect(() => {
@@ -276,39 +256,32 @@ export default function DashboardScreen() {
         >
           <Text style={{ color: colors.textTertiary, fontSize: 22 }}>{"\u2190"}</Text>
         </Pressable>
-        <Pressable
-          onPress={() => setCalendarOpen((v) => !v)}
-          style={{ flex: 1, alignItems: "center" }}
-        >
+        <View style={{ flex: 1, alignItems: "center" }}>
           <Text
             style={{
               color: colors.textPrimary,
               fontSize: 17,
-              fontWeight: "600",
+              fontWeight: "700",
             }}
           >
-            {formatDateHeader(selectedDate)}
+            Dashboard
           </Text>
-          <Text style={{ color: colors.accent, fontSize: 11, marginTop: 2 }}>
-            {calendarOpen ? "Tap to close" : "Tap for calendar"} {calendarOpen ? "\u25B2" : "\u25BC"}
-          </Text>
-        </Pressable>
+        </View>
         <Pressable
-          onPress={() => {
-            if (userId) loadTodayLogs(userId);
-            setCalendarOpen(false);
-          }}
+          onPress={() => setCalendarOpen((v) => !v)}
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            borderRadius: 16,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <Text style={{ color: selectedDate === todayDateStr ? colors.textMuted : colors.accent, fontSize: 12, fontWeight: "700" }}>
-            Today
-          </Text>
+          <Ionicons
+            name={calendarOpen ? "calendar" : "calendar-outline"}
+            size={20}
+            color={colors.accent}
+          />
         </Pressable>
       </View>
 
@@ -342,172 +315,71 @@ export default function DashboardScreen() {
       <FlatList
         data={foodLogs}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <FoodLogRow item={item} colors={colors} />}
+        renderItem={({ item }) => <FoodLogRow item={item} colors={colors} onDelete={() => deleteFoodLog(item.id)} />}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={{ padding: 16 }}>
-            {/* Calorie card */}
+            {/* NUTR. DASHBOARD card */}
             <View
               style={{
                 backgroundColor: colors.cardBg,
                 borderRadius: 16,
-                padding: 20,
+                padding: 16,
                 borderWidth: 1,
                 borderColor: colors.cardBorder,
-                marginBottom: 14,
+                marginBottom: 20,
               }}
             >
-              <Text style={{ color: colors.textTertiary, fontSize: 13, marginBottom: 4 }}>
-                Calories
+              {/* Card title */}
+              <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "800", letterSpacing: 0.5, marginBottom: 4 }}>
+                NUTRITION DASHBOARD
               </Text>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "baseline",
-                }}
-              >
-                <Text
-                  style={{
-                    color: colors.accent,
-                    fontSize: 40,
-                    fontWeight: "700",
-                  }}
-                >
-                  {summary.calories}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 16, marginLeft: 6 }}>
-                  / {targets.calories}
-                </Text>
-              </View>
-              <ProgressBar
-                current={summary.calories}
-                target={targets.calories}
-                color={colors.accent}
-                trackColor={colors.progressBarBg}
+
+              <ActivityRings
+                calories={summary.calories}
+                calorieTarget={targets.calories}
+                protein={summary.protein_g}
+                proteinTarget={targets.protein}
+                steps={displaySteps}
+                stepTarget={stepGoal}
+                water={waterGlasses}
+                waterTarget={8}
+                textColor={colors.textPrimary}
+                subTextColor={colors.subText}
+                mode={mode}
               />
             </View>
 
-            {/* Macro cards */}
-            <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-              {/* Protein */}
-              <View
+            {/* FOOD LOG HISTORY header with date bubble */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <Text
                 style={{
-                  flex: 1,
-                  backgroundColor: colors.cardBg,
-                  borderRadius: 14,
-                  padding: 14,
-                  borderWidth: 1,
-                  borderColor: colors.cardBorder,
+                  color: colors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: "800",
+                  letterSpacing: 0.5,
                 }}
               >
-                <Text style={{ color: "#4FC3F7", fontSize: 11, fontWeight: "600" }}>
-                  Protein
-                </Text>
-                <Text
-                  style={{
-                    color: colors.textPrimary,
-                    fontSize: 22,
-                    fontWeight: "700",
-                    marginTop: 4,
-                  }}
-                >
-                  {summary.protein_g}
-                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-                    /{targets.protein}g
-                  </Text>
-                </Text>
-                <ProgressBar
-                  current={summary.protein_g}
-                  target={targets.protein}
-                  color="#4FC3F7"
-                  trackColor={colors.progressBarBg}
-                />
-              </View>
-
-              {/* Carbs */}
-              <View
+                {selectedDate === todayDateStr ? "TODAY'S FOOD LOG" : formatDateHeader(selectedDate).replace("Nutrition", "FOOD LOG").toUpperCase()}
+              </Text>
+              <Pressable
+                onPress={() => setCalendarOpen((v) => !v)}
                 style={{
-                  flex: 1,
-                  backgroundColor: colors.cardBg,
-                  borderRadius: 14,
-                  padding: 14,
-                  borderWidth: 1,
-                  borderColor: colors.cardBorder,
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  backgroundColor: colors.accentDark || colors.accent + "18",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                <Text style={{ color: "#FFB74D", fontSize: 11, fontWeight: "600" }}>
-                  Carbs
-                </Text>
-                <Text
-                  style={{
-                    color: colors.textPrimary,
-                    fontSize: 22,
-                    fontWeight: "700",
-                    marginTop: 4,
-                  }}
-                >
-                  {summary.carbs_g}
-                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-                    /{targets.carbs}g
-                  </Text>
-                </Text>
-                <ProgressBar
-                  current={summary.carbs_g}
-                  target={targets.carbs}
-                  color="#FFB74D"
-                  trackColor={colors.progressBarBg}
+                <Ionicons
+                  name={calendarOpen ? "calendar" : "calendar-outline"}
+                  size={16}
+                  color={colors.accent}
                 />
-              </View>
-
-              {/* Fat */}
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: colors.cardBg,
-                  borderRadius: 14,
-                  padding: 14,
-                  borderWidth: 1,
-                  borderColor: colors.cardBorder,
-                }}
-              >
-                <Text style={{ color: "#E57373", fontSize: 11, fontWeight: "600" }}>
-                  Fat
-                </Text>
-                <Text
-                  style={{
-                    color: colors.textPrimary,
-                    fontSize: 22,
-                    fontWeight: "700",
-                    marginTop: 4,
-                  }}
-                >
-                  {summary.fat_g}
-                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-                    /{targets.fat}g
-                  </Text>
-                </Text>
-                <ProgressBar
-                  current={summary.fat_g}
-                  target={targets.fat}
-                  color="#E57373"
-                  trackColor={colors.progressBarBg}
-                />
-              </View>
+              </Pressable>
             </View>
-
-            {/* Section header */}
-            <Text
-              style={{
-                color: colors.subText,
-                fontSize: 12,
-                fontWeight: "600",
-                textTransform: "uppercase",
-                letterSpacing: 0.5,
-                marginBottom: 8,
-              }}
-            >
-              Food Log
-            </Text>
           </View>
         }
         ListEmptyComponent={

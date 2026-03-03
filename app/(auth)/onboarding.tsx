@@ -8,14 +8,20 @@ import {
   Alert,
   Keyboard,
   TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/useAuthStore";
-import { GOALS, DIET_TYPES, type OnboardingData } from "../../lib/types";
+import {
+  GOALS,
+  DIET_TYPES,
+  type OnboardingData,
+} from "../../lib/types";
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -24,8 +30,8 @@ export default function OnboardingScreen() {
   const [data, setData] = useState<OnboardingData>({
     name: "",
     age: "",
-    weight: "",
-    height: "",
+    weight_kg: "",
+    height_cm: "",
     goal: "",
     diet_type: "",
   });
@@ -35,11 +41,9 @@ export default function OnboardingScreen() {
       case 1:
         return data.name.trim().length > 0;
       case 2:
-        return data.age && data.weight && data.height;
+        return data.age && data.weight_kg && data.height_cm;
       case 3:
-        return data.goal.length > 0;
-      case 4:
-        return data.diet_type.length > 0;
+        return data.goal.length > 0 && data.diet_type.length > 0;
       default:
         return false;
     }
@@ -51,17 +55,16 @@ export default function OnboardingScreen() {
       return;
     }
 
-    // Final step — save profile
+    // Final step — save profile (only columns that exist in the table)
     try {
       const profileData = {
         id: user!.id,
         name: data.name.trim(),
         age: parseInt(data.age, 10),
-        weight: parseFloat(data.weight),
-        height: parseFloat(data.height),
+        weight_kg: parseFloat(data.weight_kg),
+        height_cm: parseFloat(data.height_cm),
         goal: data.goal,
         diet_type: data.diet_type,
-        updated_at: new Date().toISOString(),
       };
 
       const { error } = await supabase.from("profiles").upsert(profileData);
@@ -85,20 +88,16 @@ export default function OnboardingScreen() {
             key="step1"
             entering={FadeIn.duration(400)}
             exiting={FadeOut.duration(200)}
-            className="w-full"
+            style={{ width: "100%" }}
           >
-            <Text className="text-2xl text-white font-sora-bold mb-2">
-              What's your name?
-            </Text>
-            <Text className="text-brand-muted font-dm mb-8">
-              Let's personalize your experience
-            </Text>
+            <Text style={styles.title}>What's your name?</Text>
+            <Text style={styles.subtitle}>Let's personalize your experience</Text>
             <TextInput
               value={data.name}
               onChangeText={(v) => setData({ ...data, name: v })}
               placeholder="Enter your name"
               placeholderTextColor="#666"
-              className="bg-[#1A1A1A] text-white font-dm text-lg px-5 py-4 rounded-2xl"
+              style={styles.input}
             />
           </Animated.View>
         );
@@ -109,30 +108,26 @@ export default function OnboardingScreen() {
             key="step2"
             entering={FadeIn.duration(400)}
             exiting={FadeOut.duration(200)}
-            className="w-full"
+            style={{ width: "100%" }}
           >
-            <Text className="text-2xl text-white font-sora-bold mb-2">
-              Your basics
-            </Text>
-            <Text className="text-brand-muted font-dm mb-8">
-              Help us tailor recommendations
-            </Text>
+            <Text style={styles.title}>Your basics</Text>
+            <Text style={styles.subtitle}>Needed for calorie & nutrition targets</Text>
             {[
-              { label: "Age", key: "age" as const, suffix: "years" },
-              { label: "Weight", key: "weight" as const, suffix: "kg" },
-              { label: "Height", key: "height" as const, suffix: "cm" },
+              { label: "Age", key: "age" as const, suffix: "years", placeholder: "e.g. 25" },
+              { label: "Weight", key: "weight_kg" as const, suffix: "kg", placeholder: "e.g. 70" },
+              { label: "Height", key: "height_cm" as const, suffix: "cm", placeholder: "e.g. 170" },
             ].map((field) => (
-              <View key={field.key} className="mb-4">
-                <Text className="text-brand-muted font-dm mb-2 text-sm">
+              <View key={field.key} style={{ marginBottom: 16 }}>
+                <Text style={styles.fieldLabel}>
                   {field.label} ({field.suffix})
                 </Text>
                 <TextInput
                   value={data[field.key]}
                   onChangeText={(v) => setData({ ...data, [field.key]: v })}
-                  placeholder={`Enter ${field.label.toLowerCase()}`}
+                  placeholder={field.placeholder}
                   placeholderTextColor="#666"
                   keyboardType="numeric"
-                  className="bg-[#1A1A1A] text-white font-dm text-lg px-5 py-4 rounded-2xl"
+                  style={styles.input}
                 />
               </View>
             ))}
@@ -145,70 +140,37 @@ export default function OnboardingScreen() {
             key="step3"
             entering={FadeIn.duration(400)}
             exiting={FadeOut.duration(200)}
-            className="w-full"
+            style={{ width: "100%" }}
           >
-            <Text className="text-2xl text-white font-sora-bold mb-2">
-              What's your goal?
-            </Text>
-            <Text className="text-brand-muted font-dm mb-8">
-              Pick one that fits you best
-            </Text>
-            <View className="flex-row flex-wrap gap-3">
+            <Text style={styles.title}>Your preferences</Text>
+            <Text style={styles.subtitle}>We'll tailor meals & goals for you</Text>
+
+            <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>Goal</Text>
+            <View style={styles.optionRow}>
               {GOALS.map((g) => (
                 <TouchableOpacity
                   key={g.id}
                   onPress={() => setData({ ...data, goal: g.id })}
-                  className={`flex-1 min-w-[45%] p-5 rounded-2xl items-center ${
-                    data.goal === g.id
-                      ? "bg-brand-green"
-                      : "bg-[#1A1A1A]"
-                  }`}
+                  style={[styles.optionCard, data.goal === g.id && styles.optionCardSelected]}
                 >
-                  <Text className="text-3xl mb-2">{g.icon}</Text>
-                  <Text
-                    className={`font-dm-medium text-sm ${
-                      data.goal === g.id ? "text-brand-dark" : "text-white"
-                    }`}
-                  >
+                  <Text style={styles.optionEmoji}>{g.icon}</Text>
+                  <Text style={[styles.optionLabel, data.goal === g.id && styles.optionLabelSelected]}>
                     {g.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </Animated.View>
-        );
 
-      case 4:
-        return (
-          <Animated.View
-            key="step4"
-            entering={FadeIn.duration(400)}
-            exiting={FadeOut.duration(200)}
-            className="w-full"
-          >
-            <Text className="text-2xl text-white font-sora-bold mb-2">
-              Dietary preference?
-            </Text>
-            <Text className="text-brand-muted font-dm mb-8">
-              We'll customize meal suggestions
-            </Text>
-            <View className="flex-row flex-wrap gap-3">
+            <Text style={[styles.fieldLabel, { marginTop: 24, marginBottom: 8 }]}>Diet</Text>
+            <View style={styles.optionRow}>
               {DIET_TYPES.map((d) => (
                 <TouchableOpacity
                   key={d.id}
                   onPress={() => setData({ ...data, diet_type: d.id })}
-                  className={`flex-1 min-w-[45%] p-5 rounded-2xl items-center ${
-                    data.diet_type === d.id
-                      ? "bg-brand-green"
-                      : "bg-[#1A1A1A]"
-                  }`}
+                  style={[styles.optionCard, data.diet_type === d.id && styles.optionCardSelected]}
                 >
-                  <Text className="text-3xl mb-2">{d.icon}</Text>
-                  <Text
-                    className={`font-dm-medium text-sm ${
-                      data.diet_type === d.id ? "text-brand-dark" : "text-white"
-                    }`}
-                  >
+                  <Text style={styles.optionEmoji}>{d.icon}</Text>
+                  <Text style={[styles.optionLabel, data.diet_type === d.id && styles.optionLabelSelected]}>
                     {d.label}
                   </Text>
                 </TouchableOpacity>
@@ -220,55 +182,126 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-    <ScrollView
-      className="flex-1 bg-brand-dark"
-      contentContainerClassName="flex-grow px-6 pt-16 pb-10 justify-between"
-      keyboardShouldPersistTaps="handled"
-      onScrollBeginDrag={Keyboard.dismiss}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1, backgroundColor: "#0D0D0D" }}
     >
-      {/* Progress dots */}
-      <View className="flex-row justify-center gap-2 mb-10">
-        {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-          <View
-            key={i}
-            className={`h-2 rounded-full ${
-              i + 1 <= step ? "bg-brand-green w-6" : "bg-[#333] w-2"
-            }`}
-          />
-        ))}
-      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingHorizontal: 24,
+          paddingTop: 64,
+          paddingBottom: 40,
+          justifyContent: "space-between",
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Progress dots */}
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, marginBottom: 40 }}>
+          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+            <View
+              key={i}
+              style={{
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: i + 1 <= step ? "#A8FF3E" : "#333",
+                width: i + 1 <= step ? 20 : 6,
+              }}
+            />
+          ))}
+        </View>
 
-      {renderStep()}
+        {renderStep()}
 
-      {/* Navigation */}
-      <View className="mt-10">
-        <TouchableOpacity
-          onPress={handleNext}
-          disabled={!canNext()}
-          className={`py-4 rounded-2xl items-center ${
-            canNext() ? "bg-brand-green" : "bg-[#333]"
-          }`}
-        >
-          <Text
-            className={`text-lg font-sora-semibold ${
-              canNext() ? "text-brand-dark" : "text-brand-muted"
-            }`}
-          >
-            {step === TOTAL_STEPS ? "Get Started" : "Next"}
-          </Text>
-        </TouchableOpacity>
-
-        {step > 1 && (
+        {/* Navigation */}
+        <View style={{ marginTop: 32 }}>
           <TouchableOpacity
-            onPress={() => setStep(step - 1)}
-            className="mt-4 items-center"
+            onPress={handleNext}
+            disabled={!canNext()}
+            style={{
+              paddingVertical: 16,
+              borderRadius: 16,
+              alignItems: "center",
+              backgroundColor: canNext() ? "#A8FF3E" : "#333",
+            }}
           >
-            <Text className="text-brand-muted font-dm text-base">Back</Text>
+            <Text
+              style={{
+                fontSize: 17,
+                fontWeight: "600",
+                color: canNext() ? "#0D0D0D" : "#666",
+              }}
+            >
+              {step === TOTAL_STEPS ? "Get Started" : "Next"}
+            </Text>
           </TouchableOpacity>
-        )}
-      </View>
-    </ScrollView>
-    </TouchableWithoutFeedback>
+
+          {step > 1 && (
+            <TouchableOpacity
+              onPress={() => setStep(step - 1)}
+              style={{ marginTop: 14, alignItems: "center" }}
+            >
+              <Text style={{ color: "#888", fontSize: 15 }}>Back</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = {
+  title: {
+    fontSize: 26,
+    color: "#fff",
+    fontWeight: "700" as const,
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: "#888",
+    marginBottom: 28,
+  },
+  fieldLabel: {
+    color: "#888",
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: "#1A1A1A",
+    color: "#fff",
+    fontSize: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 16,
+  },
+  optionRow: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+    gap: 10,
+  },
+  optionCard: {
+    flexBasis: "47%" as any,
+    flexGrow: 1,
+    padding: 18,
+    borderRadius: 16,
+    alignItems: "center" as const,
+    backgroundColor: "#1A1A1A",
+  },
+  optionCardSelected: {
+    backgroundColor: "#A8FF3E",
+  },
+  optionEmoji: {
+    fontSize: 28,
+    marginBottom: 6,
+  },
+  optionLabel: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "500" as const,
+  },
+  optionLabelSelected: {
+    color: "#0D0D0D",
+  },
+};

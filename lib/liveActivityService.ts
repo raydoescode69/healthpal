@@ -18,6 +18,8 @@ interface DailySummary {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  steps?: number;
+  waterGlasses?: number;
 }
 
 let activityId: string | null = null;
@@ -29,9 +31,16 @@ function buildState(consumed: DailySummary, profile: Partial<UserProfile> | null
   const remaining = Math.max(targets.calories - consumed.calories, 0);
   const progress = Math.min(consumed.calories / targets.calories, 1);
 
+  const subtitle = [
+    `\uD83D\uDD25 ${consumed.calories}/${targets.calories} cal`,
+    `\uD83D\uDCAA ${consumed.protein_g}/${targets.protein}g`,
+    `\uD83D\uDC63 ${consumed.steps ?? 0}/10k`,
+    `\uD83D\uDCA7 ${consumed.waterGlasses ?? 0}/8`,
+  ].join("  ");
+
   return {
-    title: `${consumed.calories.toLocaleString()} / ${targets.calories.toLocaleString()} cal`,
-    subtitle: getMealSubtitle(remaining),
+    title: `${Math.round(progress * 100)}% daily goal`,
+    subtitle,
     progressBar: { progress },
   };
 }

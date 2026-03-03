@@ -8,10 +8,10 @@ export interface NutritionTargets {
 }
 
 export function calculateTargets(profile: Partial<UserProfile> | null | undefined): NutritionTargets {
-  if (!profile?.weight || !profile?.height || !profile?.age) {
+  if (!profile?.weight_kg || !profile?.height_cm || !profile?.age) {
     return { calories: 2000, protein: 150, carbs: 200, fat: 67 };
   }
-  const bmr = 10 * profile.weight + 6.25 * profile.height - 5 * profile.age + 5;
+  const bmr = 10 * profile.weight_kg + 6.25 * profile.height_cm - 5 * profile.age + 5;
   const tdee = bmr * 1.55;
   const goal = (profile.goal || "").toLowerCase();
   let cal = Math.round(tdee);

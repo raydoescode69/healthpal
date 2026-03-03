@@ -1,5 +1,7 @@
 import { supabase } from "./supabase";
-import type { ParsedBotResponse, DietPlanData } from "./types";
+import { generateDietPlan } from "./dietEngine";
+import { formatKBContext } from "./knowledgeBase";
+import type { ParsedBotResponse, DietPlanData, FoodAnalysisResult } from "./types";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -125,10 +127,11 @@ export function buildSystemPrompt(context: LoadedContext): string {
   return `You are Nyra — a 24 year old Indian fitness-conscious friend texting on WhatsApp. It's ${timeOfDay}.${profileBlock}${memoriesBlock}
 
 PERSONALITY:
-- Text like a real 24yo Indian girl on WhatsApp. Use "yaar", "bhai", "chill", "haan", "nahi" naturally.
-- Mirror user's language — if English, reply English. If Hinglish, reply Hinglish.
+- Text like a friendly, warm health companion. Be conversational and supportive, but not overly informal.
+- Mirror the user's language naturally — if English, reply English. If Hinglish, reply Hinglish.
 - Be a little funny sometimes, use "lol", "haha" naturally
 - If user is sad/demotivated, be warm and supportive like a real friend
+- NEVER use: "bhai", "yaar", "chill", "haan", "nahi", "arre" — keep tone casual but clean
 
 RESPONSE FORMAT:
 - Max 2 sentences per message bubble
@@ -139,33 +142,15 @@ BANNED PHRASES (never use these):
 - "Certainly!", "Of course!", "Great question!", "As an AI", "I understand", "It's important to note"
 - "I'd be happy to", "Absolutely!", "That's a great"
 
-DIET PLAN FORMAT:
-When the user EXPLICITLY asks for a diet plan, meal plan, eating schedule, or uses words like "diet plan", "meal plan", "khana plan", "new plan", "update plan":
-- If you have their profile data (weight, goal, diet_type), generate a PERSONALIZED plan
-- If you don't have enough info, generate a GENERIC plan and offer to personalize
-- Target daily calories: ${calculateDailyCalories(p)} kcal
-- Target macros: ~${calculateMacros(calculateDailyCalories(p), p?.goal).protein}g protein, ~${calculateMacros(calculateDailyCalories(p), p?.goal).carbs}g carbs, ~${calculateMacros(calculateDailyCalories(p), p?.goal).fat}g fat
-- Output the plan as a single line starting with "DIET_PLAN:" followed by valid JSON:
-DIET_PLAN:{"type":"DIET_PLAN","is_personalized":true,"daily_calories":${calculateDailyCalories(p)},"daily_protein_g":${calculateMacros(calculateDailyCalories(p), p?.goal).protein},"daily_carbs_g":${calculateMacros(calculateDailyCalories(p), p?.goal).carbs},"daily_fat_g":${calculateMacros(calculateDailyCalories(p), p?.goal).fat},"days":[{"day":"Monday","meals":[{"emoji":"🥣","name":"Masala Oats","time":"8:00 AM","cal":320,"protein_g":12,"carbs_g":45,"fat_g":8,"portion":"1 bowl (200g)"}]}]}
-- Include 7 days, each with 5 meals (breakfast, mid-morning snack, lunch, evening snack, dinner)
-- ALL 7 days must have UNIQUE meals — no repeated meals across days
-- Every meal MUST include protein_g, carbs_g, fat_g, and portion fields
-- Include Indian food options naturally (dal, roti, paneer, chicken curry, idli, poha, etc.) mixed with global options
-- Respect diet_type: ${p?.diet_type ? p.diet_type.replace(/_/g, " ") : "no preference"} — never include non-veg items for veg/vegan users
-- Add a short text bubble BEFORE the DIET_PLAN: line (e.g. "here's your plan bhai 💪")
-- The DIET_PLAN: line MUST be on its OWN line with the COMPLETE JSON on that SAME line — do NOT pretty-print, do NOT use newlines inside the JSON, do NOT wrap in code blocks
-- The entire JSON must be a SINGLE LINE of minified JSON immediately after "DIET_PLAN:"
-
-CRITICAL DIET PLAN RULES:
-- ONLY include DIET_PLAN: JSON when user EXPLICITLY asks for a diet/meal plan
-- NEVER send a diet plan for casual messages like "ok", "thanks", "smjh gaya", "what?", "haan", general questions, etc.
-- If user says "yes customize" or "personalize" → ask for missing info one question at a time, do NOT send another plan yet
-- Once you have enough data AND user confirms → then send personalized plan
-- When in doubt, do NOT include DIET_PLAN: — just reply with normal text
+DIET PLAN:
+- When the user asks for a diet plan, a plan card is generated AUTOMATICALLY by the app — you do NOT need to create one
+- NEVER output JSON, DIET_PLAN:, code blocks, or structured data in your response
+- Just reply with a brief, casual intro like "here's your personalized plan!" and the card will appear automatically
+- If user asks to customize or personalize their plan, ask for missing info one question at a time
 
 SCOPE:
 - nutrition, diet, fitness, workouts, mental wellness, sleep, hydration, supplements
-- Off-topic? Reply: "haha bhai that's above my pay grade 😂 health stuff toh pucho yaar!"
+- Off-topic? Reply: "haha that's a bit out of my zone 😂 ask me anything health or nutrition related though!"
 - Don't diagnose medical conditions. Serious stuff → casually suggest seeing a doctor.
 
 MEMORY RULES:
@@ -346,6 +331,62 @@ export function parseResponse(raw: string): ParsedBotResponse {
   return { bubbles, dietPlan };
 }
 
+// ── detectFoodLogIntent ──────────────────────────────────────
+async function detectFoodLogIntent(
+  message: string
+): Promise<{ isLogIntent: boolean; foodDescription: string }> {
+  try {
+    const result = await callOpenAI(
+      [
+        {
+          role: "system",
+          content: `Does this message describe food the user ate or drank? If yes, extract the food description. Return ONLY valid JSON: {"isLogIntent": true/false, "foodDescription": "..."}\n\nRules:\n- "maine 2 roti khayi" → true\n- "I had coffee" → true\n- "what should I eat?" → false\n- "suggest a diet" → false\n- Greetings, questions, thanks → false`,
+        },
+        { role: "user", content: message },
+      ],
+      "gpt-4o-mini",
+      150,
+      0.1
+    );
+
+    const parsed = JSON.parse(result);
+    return {
+      isLogIntent: !!parsed.isLogIntent,
+      foodDescription: parsed.foodDescription || "",
+    };
+  } catch {
+    return { isLogIntent: false, foodDescription: "" };
+  }
+}
+
+// ── analyzeFoodFromChat (lightweight inline analysis) ─────────
+async function analyzeFoodFromChat(
+  description: string
+): Promise<FoodAnalysisResult | null> {
+  try {
+    const hour = new Date().getHours();
+    const mealType =
+      hour < 11 ? "breakfast" : hour < 15 ? "lunch" : hour < 18 ? "snack" : "dinner";
+
+    const result = await callOpenAI(
+      [
+        {
+          role: "system",
+          content: `You are a nutrition analyzer. Given a food description, estimate its nutritional content. Return ONLY valid JSON:\n{"food_name":"string","calories":number,"protein_g":number,"carbs_g":number,"fat_g":number,"meal_type":"string","confidence":"high"|"medium"|"low","portion_size":"string"}\n\nBe accurate with Indian foods. Use common portion sizes. meal_type should be: ${mealType}`,
+        },
+        { role: "user", content: `Analyze: "${description}"` },
+      ],
+      "gpt-4o-mini",
+      300,
+      0.3
+    );
+
+    return JSON.parse(result) as FoodAnalysisResult;
+  } catch {
+    return null;
+  }
+}
+
 // ── sendMessage ──────────────────────────────────────────────
 // Keywords that indicate user explicitly wants a diet plan
 const DIET_PLAN_KEYWORDS = [
@@ -369,13 +410,26 @@ export async function sendMessage(
   messageHistory: { role: "user" | "assistant"; content: string }[],
   dietPlanAlreadyShown: boolean = false
 ): Promise<ParsedBotResponse> {
-  const context = await loadContext(userId);
+  // Detect food logging intent in parallel with context loading
+  const [context, foodIntent] = await Promise.all([
+    loadContext(userId),
+    detectFoodLogIntent(userMessage),
+  ]);
+
   const systemPrompt = buildSystemPrompt(context);
 
+  // Search knowledge base for relevant health info
+  const kbContext = await formatKBContext(userMessage, 3);
+
   // If diet plan was already shown and user isn't explicitly asking for one, add instruction
-  let extraInstruction = "";
+  let extraInstruction = kbContext;
   if (dietPlanAlreadyShown && !userExplicitlyWantsDietPlan(userMessage)) {
-    extraInstruction = "\n\nIMPORTANT: A diet plan was already shown in this conversation. Do NOT include DIET_PLAN: JSON in your response. Just reply with normal text.";
+    extraInstruction += "\n\nIMPORTANT: A diet plan was already shown in this conversation. Do NOT include DIET_PLAN: JSON in your response. Just reply with normal text.";
+  }
+
+  // If food intent detected, add instruction for the AI to acknowledge it
+  if (foodIntent.isLogIntent) {
+    extraInstruction += "\n\nThe user just told you what they ate. Acknowledge it briefly and naturally. A food log card will be shown automatically — do NOT list nutrition details yourself.";
   }
 
   // Build messages array: system + recent history + current message
@@ -389,26 +443,86 @@ export async function sendMessage(
   ];
 
   const isDietRequest = userExplicitlyWantsDietPlan(userMessage);
-  const maxTokens = isDietRequest ? 3500 : 1500;
+  console.log("[ChatEngine] isDietRequest:", isDietRequest, "dietPlanAlreadyShown:", dietPlanAlreadyShown, "msg:", userMessage.slice(0, 60));
 
-  // When user explicitly asks for diet plan, add a reinforcement message
-  if (isDietRequest) {
+  // ── Fast path: generate diet plan locally, only ask AI for intro text ──
+  if (isDietRequest && !dietPlanAlreadyShown) {
+    // Generate diet plan instantly using local offline engine
+    const localPlan = generateDietPlan({
+      weight_kg: context.profile?.weight_kg,
+      height_cm: context.profile?.height_cm,
+      age: context.profile?.age,
+      goal: context.profile?.goal,
+      diet_type: context.profile?.diet_type,
+      allergies: context.profile?.allergies,
+    });
+
+    // Ask AI for just a brief intro message (fast, small response)
     messages.push({
       role: "system",
-      content: `IMPORTANT REMINDER: The user is asking for a diet plan. You MUST respond with DIET_PLAN: followed by minified JSON on a single line. Do NOT write the plan as plain text. Do NOT use markdown tables or bullet points for the plan. Output ONLY the DIET_PLAN:{...json...} format with all 7 days and 5 meals each. Add a brief text bubble before it.`,
+      content: "The user asked for a diet plan. A diet plan card will be shown automatically. Just write 1-2 short casual sentences introducing it. Do NOT list any meals or nutrition details. Keep it very brief.",
     });
+
+    const [raw, foodLogResult] = await Promise.all([
+      callOpenAI(messages, "gpt-4o-mini", 200, 0.75),
+      foodIntent.isLogIntent
+        ? analyzeFoodFromChat(foodIntent.foodDescription)
+        : Promise.resolve(null),
+    ]);
+
+    extractProfileInBackground(userId, userMessage).catch(() => {});
+
+    const parsed = parseResponse(raw);
+    parsed.dietPlan = localPlan;
+    console.log("[ChatEngine] Fast path: dietPlan set, days:", localPlan?.days?.length, "bubbles:", parsed.bubbles.length);
+
+    if (foodLogResult) {
+      parsed.foodLogResult = foodLogResult;
+    }
+
+    return parsed;
   }
 
-  const raw = await callOpenAI(messages, "gpt-4o", maxTokens, 0.75);
+  // ── Normal path: no diet plan generation needed ──
+  const maxTokens = 1500;
+
+  // Always reinforce: never output JSON or DIET_PLAN markers
+  extraInstruction += "\n\nNEVER output JSON, code blocks, or DIET_PLAN: markers. Diet plan cards are generated automatically by the app. Just reply with normal conversational text.";
+
+  if (dietPlanAlreadyShown) {
+    extraInstruction += "\nA diet plan was already shown in this conversation. Do NOT generate another one.";
+  }
+
+  // Run AI response and food analysis in parallel (if food intent detected)
+  const [raw, foodLogResult] = await Promise.all([
+    callOpenAI(messages, "gpt-4o", maxTokens, 0.75),
+    foodIntent.isLogIntent
+      ? analyzeFoodFromChat(foodIntent.foodDescription)
+      : Promise.resolve(null),
+  ]);
 
   // Background extraction (fire and forget)
   extractProfileInBackground(userId, userMessage).catch(() => {});
 
   const parsed = parseResponse(raw);
 
-  // Double-guard: strip diet plan if already shown and user didn't ask
-  if (dietPlanAlreadyShown && !userExplicitlyWantsDietPlan(userMessage)) {
+  // If AI accidentally generated a diet plan JSON, replace with local plan
+  if (parsed.dietPlan && !dietPlanAlreadyShown) {
+    parsed.dietPlan = generateDietPlan({
+      weight_kg: context.profile?.weight_kg,
+      height_cm: context.profile?.height_cm,
+      age: context.profile?.age,
+      goal: context.profile?.goal,
+      diet_type: context.profile?.diet_type,
+      allergies: context.profile?.allergies,
+    });
+  } else if (dietPlanAlreadyShown) {
     parsed.dietPlan = undefined;
+  }
+
+  // Attach food log result if detected
+  if (foodLogResult) {
+    parsed.foodLogResult = foodLogResult;
   }
 
   return parsed;
@@ -462,24 +576,37 @@ User message: "${userMessage}"`;
 }
 
 // ── generateWelcome ──────────────────────────────────────────
-export async function generateWelcome(userId: string): Promise<string> {
+export async function generateWelcome(userId: string, isFirstEver: boolean = false): Promise<string> {
   const context = await loadContext(userId);
   const systemPrompt = buildSystemPrompt(context);
 
   const hour = new Date().getHours();
-  const name = context.profile?.name || "bhai";
+  const name = context.profile?.name || "there";
   const greeting =
     hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
 
-  const welcomePrompt = `User just opened the app. Send a short warm welcome like a WhatsApp friend. Say something like "yo ${name}! good ${greeting}" then casually ask what's up. 1-2 sentences max. Sound like a real person, not a bot. Use "yaar"/"bhai" naturally if it fits.`;
+  let welcomePrompt: string;
+
+  if (isFirstEver) {
+    welcomePrompt = `This is the user's VERY FIRST time using Nyra. Introduce yourself warmly and briefly. Your name is Nyra. Tell them what you can help with.
+
+Send 3-4 separate message bubbles using "|||" to separate them:
+- Bubble 1: A warm greeting like "hey ${name}! good ${greeting}, I'm Nyra — your personal nutrition companion"
+- Bubble 2: What you can do: track calories just by telling you what they ate, personalized diet plans, water & step tracking
+- Bubble 3: Something encouraging to get started
+
+Keep each bubble to 1-2 sentences max. Sound warm and friendly, not formal. Remember to separate bubbles with |||`;
+  } else {
+    welcomePrompt = `User just opened the app. Send a short warm welcome. Say something like "hey ${name}! good ${greeting}" then casually ask what's up. 1-2 sentences max. Sound like a real person, not a bot. Keep it warm but not overly informal. Use ||| to separate if you need more than one bubble.`;
+  }
 
   const raw = await callOpenAI(
     [
       { role: "system", content: systemPrompt },
       { role: "user", content: welcomePrompt },
     ],
-    "gpt-4o",
-    200,
+    isFirstEver ? "gpt-4o" : "gpt-4o-mini",
+    isFirstEver ? 400 : 200,
     0.8
   );
 

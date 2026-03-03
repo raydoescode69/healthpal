@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -27,11 +27,17 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.healthpal.app",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_DISTANCE"
       ]
     },
     "web": {
@@ -61,6 +67,16 @@
         "expo-audio",
         {
           "microphonePermission": "Nyra needs microphone access for voice conversations."
+        }
+      ],
+      "@react-native-google-signin/google-signin",
+      [
+        "react-native-health-connect",
+        {
+          "requestPermissionsRationale": {
+            "title": "Nyra needs access to your health data",
+            "message": "This allows Nyra to read your step count and activity data to show on your dashboard."
+          }
         }
       ]
     ],
