@@ -69,11 +69,13 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const QUICK_ACTION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   "Diet Plan": "nutrition-outline",
   "Log Food": "camera-outline",
+  "Connectors": "git-network-outline",
 };
 
 const QUICK_ACTION_DESCS: Record<string, string> = {
   "Diet Plan": "Personalized 7-day meal plan",
   "Log Food": "Photo, camera, or type it in",
+  "Connectors": "Sync health data from external apps",
 };
 
 // ── Display types ──────────────────────────────────────────────
@@ -276,9 +278,10 @@ function MessageBubble({
         ]}
       >
         {isPinned && (
-          <Text style={{ color: colors.accent, fontSize: 10, marginBottom: 2 }}>
-            {"\uD83D\uDCCC"} Pinned
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
+            <Ionicons name="pin" size={10} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: 10, marginLeft: 3 }}>Pinned</Text>
+          </View>
         )}
         <Text
           style={{
@@ -412,7 +415,7 @@ function PinnedBanner({
     <View style={{ borderBottomWidth: 1, borderBottomColor: colors.pinnedBorder }}>
       {items.map((item) => {
         const previewText = isDietCard(item)
-          ? "\uD83E\uDD57 Your 7-Day Plan"
+          ? "Your 7-Day Plan"
           : (item as DisplayMessage).content;
         return (
           <Pressable
@@ -428,7 +431,7 @@ function PinnedBanner({
               borderBottomColor: colors.pinnedBorder,
             }}
           >
-            <Text style={{ color: colors.accent, fontSize: 12, marginRight: 8 }}>{"\uD83D\uDCCC"}</Text>
+            <Ionicons name="pin" size={12} color={colors.accent} style={{ marginRight: 8 }} />
             <Text
               style={{ flex: 1, color: colors.pinnedText, fontSize: 13 }}
               numberOfLines={1}
@@ -491,7 +494,10 @@ function WaterPrompt({
 }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.bubbleBot, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.widgetBorder, gap: 8 }}>
-      <Text style={{ color: colors.subText, fontSize: 13, marginRight: 4 }}>{"\uD83D\uDCA7"} Glasses:</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", marginRight: 4 }}>
+        <Ionicons name="water-outline" size={14} color={colors.subText} style={{ marginRight: 3 }} />
+        <Text style={{ color: colors.subText, fontSize: 13 }}>Glasses:</Text>
+      </View>
       {[1, 2, 3, 4].map((n) => (
         <Pressable
           key={n}
@@ -849,11 +855,11 @@ export default function ChatScreen() {
       }
 
       setLoadingHistory(false);
-      sendWelcome();
+      showStaticWelcome();
     } catch (e) {
       console.warn("[Chat] loadLatestConversation error:", e);
       setLoadingHistory(false);
-      sendWelcome();
+      showStaticWelcome();
     }
   };
 
@@ -874,59 +880,26 @@ export default function ChatScreen() {
     }
   };
 
-  // ── Welcome message ────────────────────────────────────────
-  const sendWelcome = async () => {
-    if (welcomeSent.current || !userId) return;
-    welcomeSent.current = true;
-    setShowTypingIndicator(true);
+  // ── Welcome screen state ────────────────────────────────────
+  const [showWelcomeScreen, setShowWelcomeScreen] = useState(false);
 
-    try {
-      // Check if this is the user's very first time (no intro shown yet)
-      const introKey = `nyra_intro_shown_${userId}`;
-      const introShown = await AsyncStorage.getItem(introKey);
-      const isFirstEver = !introShown;
+  const showStaticWelcome = () => {
+    setShowWelcomeScreen(true);
+    setLoadingHistory(false);
+  };
 
-      const welcomeText = await generateWelcome(userId, isFirstEver);
-      setShowTypingIndicator(false);
-
-      // Mark intro as shown
-      if (isFirstEver) {
-        await AsyncStorage.setItem(introKey, "true");
-      }
-
-      // Split the welcome text into multiple bubbles using parseResponse
-      const parsed = parseResponse(welcomeText);
-      const bubbles = parsed.bubbles.length > 0 ? parsed.bubbles : [welcomeText];
-
-      // Ensure conversation exists in DB before saving messages
-      await ensureConversation("New Chat");
-
-      // Show the first bubble immediately
-      const firstBubbleId = Crypto.randomUUID();
-      const firstMsg: DisplayMessage = {
-        id: firstBubbleId,
-        role: "assistant",
-        content: bubbles[0],
-        created_at: new Date().toISOString(),
-      };
-      setMessages([firstMsg]);
-      setCurrentBubbleText(bubbles[0]);
-      saveMessage("assistant", bubbles[0], firstBubbleId);
-
-      // Queue remaining bubbles for sequential display
-      if (bubbles.length > 1) {
-        bubbleQueueRef.current = bubbles.slice(1);
-        isProcessingBubblesRef.current = false;
-      }
-    } catch {
-      setShowTypingIndicator(false);
-      const fallbackMsg: DisplayMessage = {
-        id: Crypto.randomUUID(),
-        role: "assistant",
-        content: "hey! I'm Nyra, your nutrition companion. Ask me anything about health, track your calories, or get a personalized diet plan!",
-        created_at: new Date().toISOString(),
-      };
-      setMessages([fallbackMsg]);
+  const handleWelcomeAction = (action: string) => {
+    setShowWelcomeScreen(false);
+    switch (action) {
+      case "diet_plan":
+        handleSend("Give me a personalized diet plan");
+        break;
+      case "track_calories":
+        setShowFoodLogModal(true);
+        break;
+      case "advice":
+        handleSend("Give me some health and nutrition advice");
+        break;
     }
   };
 
@@ -952,7 +925,7 @@ export default function ChatScreen() {
     setReplyToMessage(null);
 
     welcomeSent.current = false;
-    sendWelcome();
+    showStaticWelcome();
   };
 
   // ── Load a specific conversation ───────────────────────────
@@ -1264,6 +1237,7 @@ export default function ChatScreen() {
     if (!rawContent || isLoading) return;
 
     Keyboard.dismiss();
+    setShowWelcomeScreen(false);
     setShowFoodPrompt(false);
     setShowWaterPrompt(false);
 
@@ -1363,7 +1337,7 @@ export default function ChatScreen() {
       const errMsg: DisplayMessage = {
         id: Crypto.randomUUID(),
         role: "assistant",
-        content: "looks like there's a connection issue \uD83D\uDE05 check your internet and try again?",
+        content: "Looks like there's a connection issue. Check your internet and try again?",
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errMsg]);
@@ -1386,6 +1360,9 @@ export default function ChatScreen() {
         setShowWaterPrompt(false);
         setShowFoodPrompt(false);
         setShowFoodLogModal(true);
+        break;
+      case "Connectors":
+        router.push("/(main)/connectors");
         break;
       default:
         handleSend(label);
@@ -1434,7 +1411,7 @@ export default function ChatScreen() {
       const errMsg: DisplayMessage = {
         id: Crypto.randomUUID(),
         role: "assistant",
-        content: "couldn't analyze that food \uD83D\uDE05 try again?",
+        content: "Couldn't analyze that food. Try again?",
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errMsg]);
@@ -1473,7 +1450,7 @@ export default function ChatScreen() {
       const errMsg: DisplayMessage = {
         id: Crypto.randomUUID(),
         role: "assistant",
-        content: "couldn't save that food log \uD83D\uDE15 try again?",
+        content: "Couldn't save that food log. Try again?",
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errMsg]);
@@ -1650,7 +1627,7 @@ export default function ChatScreen() {
               </Text>
             </Pressable>
 
-            {/* Voice Mode toggle */}
+            {/* Voice call toggle */}
             <Pressable
               onPress={isVoiceMode ? endVoiceMode : startVoiceMode}
               style={({ pressed }) => ({
@@ -1664,7 +1641,7 @@ export default function ChatScreen() {
               })}
             >
               <Ionicons
-                name={isVoiceMode ? "close" : "headset-outline"}
+                name={isVoiceMode ? "close" : "call-outline"}
                 size={20}
                 color={isVoiceMode ? colors.accent : colors.subText}
               />
@@ -1684,6 +1661,71 @@ export default function ChatScreen() {
 
         {/* Messages container */}
         <View style={{ flex: 1 }}>
+          {showWelcomeScreen ? (
+            <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 28 }}>
+              <Animated.View entering={FadeIn.duration(500)}>
+                <Text style={{ color: colors.subText, fontSize: 16, marginBottom: 4 }}>
+                  Hi {profile?.name || "there"}
+                </Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 28, fontWeight: "700", marginBottom: 32 }}>
+                  Where should we start?
+                </Text>
+
+                <View style={{
+                  backgroundColor: mode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.6)",
+                  borderWidth: 1,
+                  borderColor: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+                  borderRadius: 20,
+                  padding: 14,
+                  gap: 10,
+                  ...(Platform.OS === "ios" ? {} : {}),
+                  shadowColor: mode === "dark" ? "#000" : "#888",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: mode === "dark" ? 0.3 : 0.08,
+                  shadowRadius: 12,
+                  elevation: 4,
+                  overflow: "hidden",
+                }}>
+                  {/* Glass blur overlay */}
+                  <View style={{
+                    position: "absolute",
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: mode === "dark" ? "rgba(30,30,30,0.5)" : "rgba(245,245,245,0.5)",
+                    borderRadius: 20,
+                  }} />
+
+                  {[
+                    { key: "diet_plan", label: "Diet Plan", icon: "nutrition-outline" as const },
+                    { key: "track_calories", label: "Track Calories", icon: "camera-outline" as const },
+                    { key: "advice", label: "Health Advice", icon: "heart-outline" as const },
+                  ].map((item) => (
+                    <Pressable
+                      key={item.key}
+                      onPress={() => handleWelcomeAction(item.key)}
+                      style={({ pressed }) => ({
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor: pressed
+                          ? (mode === "dark" ? "rgba(168,255,62,0.1)" : "rgba(91,170,34,0.08)")
+                          : (mode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)"),
+                        borderWidth: 1,
+                        borderColor: mode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+                        borderRadius: 14,
+                        paddingHorizontal: 16,
+                        height: 48,
+                      })}
+                    >
+                      <Ionicons name={item.icon} size={18} color={colors.accent} style={{ marginRight: 10 }} />
+                      <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", flex: 1 }}>
+                        {item.label}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
+                    </Pressable>
+                  ))}
+                </View>
+              </Animated.View>
+            </View>
+          ) : (
               <FlatList
                 ref={flatListRef}
                 data={listData}
@@ -1760,7 +1802,7 @@ export default function ChatScreen() {
                   }, 200);
                 }}
               />
-
+          )}
         </View>
 
         {/* Typing indicator */}
@@ -1785,7 +1827,7 @@ export default function ChatScreen() {
         {/* Bottom bar */}
         <View
           style={{
-            paddingBottom: 0,
+            paddingBottom: insets.bottom + 6,
             backgroundColor: colors.bg,
           }}
         >
@@ -1830,39 +1872,42 @@ export default function ChatScreen() {
               subTextColor={colors.inputPlaceholder}
             />
           ) : (
-          <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 0, flexDirection: "row", alignItems: "center" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 6 }}>
+            {/* + button */}
             <Pressable
               onPress={() => setShowQuickActions(true)}
+              hitSlop={4}
               style={({ pressed }) => ({
                 width: 36,
                 height: 36,
                 borderRadius: 18,
                 alignItems: "center",
                 justifyContent: "center",
-                opacity: pressed ? 0.6 : 1,
-                marginRight: 6,
-                backgroundColor: pressed ? colors.accent + "20" : "transparent",
+                opacity: pressed ? 0.5 : 1,
               })}
             >
-              <Ionicons name="add-circle-outline" size={24} color={colors.accent} />
+              <Ionicons name="add" size={24} color={colors.subText} />
             </Pressable>
+
+            {/* Input field */}
             <View style={{
               flex: 1,
               flexDirection: "row",
               alignItems: "center",
               backgroundColor: colors.inputBg + "99",
-              borderRadius: 24,
+              borderRadius: 22,
               borderWidth: 1,
-              borderColor: colors.inputBorder + "60",
+              borderColor: colors.inputBorder + "40",
+              marginHorizontal: 6,
               paddingLeft: 14,
-              paddingRight: 4,
-              minHeight: 48,
+              paddingRight: 6,
+              minHeight: 44,
             }}>
               <TextInput
                 ref={inputRef}
                 value={input}
                 onChangeText={setInput}
-                placeholder={isRecordingVoiceNote ? "Recording..." : isTranscribingNote ? "Transcribing..." : "Message..."}
+                placeholder={isRecordingVoiceNote ? "Recording..." : isTranscribingNote ? "Transcribing..." : "Ask Nyra..."}
                 placeholderTextColor={isRecordingVoiceNote ? "#FF4444" : colors.inputPlaceholder}
                 multiline
                 maxLength={1000}
@@ -1870,24 +1915,45 @@ export default function ChatScreen() {
                 style={{
                   flex: 1,
                   color: colors.inputText,
-                  fontSize: 16,
-                  paddingVertical: 12,
-                  maxHeight: 120,
+                  fontSize: 15,
+                  paddingVertical: Platform.OS === "ios" ? 10 : 8,
+                  maxHeight: 100,
                 }}
                 returnKeyType="send"
                 blurOnSubmit={false}
                 onSubmitEditing={() => handleSend()}
               />
+            </View>
+
+            {/* Mic or Send button */}
+            {input.trim() ? (
               <Pressable
-                onPress={toggleVoiceNote}
-                disabled={isTranscribingNote}
+                onPress={() => handleSend()}
+                disabled={isLoading}
                 style={({ pressed }) => ({
                   width: 36,
                   height: 36,
                   borderRadius: 18,
                   alignItems: "center",
                   justifyContent: "center",
-                  opacity: isTranscribingNote ? 0.4 : pressed ? 0.4 : 0.85,
+                  backgroundColor: pressed ? colors.accentDark : colors.accent,
+                  opacity: isLoading ? 0.4 : 1,
+                })}
+              >
+                <Ionicons name="arrow-up" size={18} color="#000" />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={toggleVoiceNote}
+                disabled={isTranscribingNote}
+                hitSlop={4}
+                style={({ pressed }) => ({
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: isTranscribingNote ? 0.4 : pressed ? 0.5 : 1,
                   backgroundColor: isRecordingVoiceNote ? "#FF4444" + "20" : "transparent",
                 })}
               >
@@ -1897,31 +1963,11 @@ export default function ChatScreen() {
                   <Ionicons
                     name={isRecordingVoiceNote ? "stop-circle" : "mic-outline"}
                     size={22}
-                    color={isRecordingVoiceNote ? "#FF4444" : colors.accent}
+                    color={isRecordingVoiceNote ? "#FF4444" : colors.subText}
                   />
                 )}
               </Pressable>
-              <Pressable
-                onPress={() => handleSend()}
-                disabled={!input.trim() || isLoading}
-                style={{
-                  marginLeft: 2,
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: input.trim() && !isLoading ? colors.sendBgActive : colors.sendBg,
-                  opacity: input.trim() && !isLoading ? 1 : 0.4,
-                }}
-              >
-                <Ionicons
-                  name="arrow-up"
-                  size={18}
-                  color={input.trim() && !isLoading ? colors.sendTextActive : colors.sendText}
-                />
-              </Pressable>
-            </View>
+            )}
           </View>
           )}
         </View>
