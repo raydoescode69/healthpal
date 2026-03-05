@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { View, Text } from "react-native";
 import Svg, { Circle } from "react-native-svg";
+import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useSharedValue,
   useAnimatedProps,
@@ -40,7 +41,7 @@ function BigRing({
   current,
   target,
   color,
-  emoji,
+  iconName,
   textColor,
   subTextColor,
   trackOpacity,
@@ -48,7 +49,7 @@ function BigRing({
   current: number;
   target: number;
   color: string;
-  emoji: string;
+  iconName: React.ComponentProps<typeof Ionicons>["name"];
   textColor: string;
   subTextColor: string;
   trackOpacity: string;
@@ -112,7 +113,7 @@ function BigRing({
             justifyContent: "center",
           }}
         >
-          <Text style={{ fontSize: 24, marginBottom: 4 }}>{emoji}</Text>
+          <Ionicons name={iconName} size={24} color={color} style={{ marginBottom: 4 }} />
           <Text style={{ color: textColor, fontSize: 34, fontWeight: "800" }}>
             {current.toLocaleString()}
           </Text>
@@ -136,7 +137,7 @@ function SmallRing({
   current,
   target,
   color,
-  emoji,
+  iconName,
   valueText,
   textColor,
   subTextColor,
@@ -145,7 +146,7 @@ function SmallRing({
   current: number;
   target: number;
   color: string;
-  emoji: string;
+  iconName: React.ComponentProps<typeof Ionicons>["name"];
   valueText: string;
   textColor: string;
   subTextColor: string;
@@ -201,7 +202,7 @@ function SmallRing({
             justifyContent: "center",
           }}
         >
-          <Text style={{ fontSize: 18 }}>{emoji}</Text>
+          <Ionicons name={iconName} size={18} color={color} />
         </View>
       </View>
       <Text style={{ color: textColor, fontSize: 12, fontWeight: "600", marginTop: 6 }}>
@@ -245,7 +246,7 @@ export default function ActivityRings({
         current={safeCal}
         target={safeCalTarget}
         color="#A8FF3E"
-        emoji={"\uD83D\uDD25"}
+        iconName="flame"
         textColor={textColor}
         subTextColor={subTextColor}
         trackOpacity={bigTrackOpacity}
@@ -265,7 +266,7 @@ export default function ActivityRings({
           current={safeProt}
           target={safeProtTarget}
           color="#4FC3F7"
-          emoji={"\uD83D\uDCAA"}
+          iconName="barbell-outline"
           valueText={`${safeProt}g protein`}
           textColor={textColor}
           subTextColor={subTextColor}
@@ -275,7 +276,7 @@ export default function ActivityRings({
           current={safeWater}
           target={safeWaterTarget}
           color="#00BCD4"
-          emoji={"\uD83D\uDCA7"}
+          iconName="water-outline"
           valueText={`${safeWater}/${safeWaterTarget} glasses`}
           textColor={textColor}
           subTextColor={subTextColor}
@@ -285,7 +286,7 @@ export default function ActivityRings({
           current={safeSteps}
           target={safeStepTarget}
           color="#FFB74D"
-          emoji={"\uD83D\uDC63"}
+          iconName="footsteps-outline"
           valueText={`${safeSteps.toLocaleString()} steps`}
           textColor={textColor}
           subTextColor={subTextColor}

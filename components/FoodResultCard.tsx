@@ -5,13 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useThemeStore } from "../store/useThemeStore";
 import { THEMES } from "../lib/theme";
 import type { FoodAnalysisResult } from "../lib/types";
-
-const MEAL_EMOJIS: Record<string, string> = {
-  breakfast: "\uD83C\uDF73",
-  lunch: "\uD83C\uDF5B",
-  dinner: "\uD83C\uDF5D",
-  snack: "\uD83C\uDF6A",
-};
+import { getMealIcon } from "../lib/mealIcons";
 
 const CONFIDENCE_CONFIG = {
   high: { label: "High Confidence", color: "#4CAF50", icon: "checkmark-circle" as const },
@@ -43,7 +37,7 @@ export default function FoodResultCard({
 
   const confidence = result.confidence || "medium";
   const confConfig = CONFIDENCE_CONFIG[confidence];
-  const emoji = MEAL_EMOJIS[result.meal_type?.toLowerCase() ?? ""] ?? "\uD83C\uDF7D\uFE0F";
+  const mealIcon = getMealIcon(result.meal_type);
   const mealLabel = result.meal_type
     ? result.meal_type.charAt(0).toUpperCase() + result.meal_type.slice(1)
     : "Meal";
@@ -104,7 +98,7 @@ export default function FoodResultCard({
 
           {/* Food name + meal badge */}
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-            <Text style={{ fontSize: 24, marginRight: 10 }}>{emoji}</Text>
+            <Ionicons name={mealIcon as any} size={24} color={colors.accent} style={{ marginRight: 10 }} />
             <View style={{ flex: 1 }}>
               <Text
                 style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700" }}

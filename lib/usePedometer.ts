@@ -8,6 +8,7 @@ interface PedometerResult {
   error: string | null;
   source: "health-connect" | "expo-sensors" | "none";
   refresh: () => void;
+  connect: () => Promise<boolean>;
 }
 
 // ── Health Connect (Android prod builds) ───────────────────
@@ -152,5 +153,32 @@ export function usePedometer(): PedometerResult {
     };
   }, [fetchSteps]);
 
-  return { steps, isAvailable, error, source, refresh: fetchSteps };
+  const connect = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS === "android") {
+      const hc = await tryHealthConnect();
+      if (hc.available) {
+        setSteps(hc.steps);
+        setIsAvailable(true);
+        setSource("health-connect");
+        setError(null);
+        return true;
+      }
+      setError("Health Connect not available. Make sure the Health Connect app is installed.");
+      return false;
+    }
+
+    const sensors = await tryExpoSensors();
+    if (sensors.available) {
+      setSteps(sensors.steps);
+      setIsAvailable(true);
+      setSource("expo-sensors");
+      setError(null);
+      return true;
+    }
+
+    setError("Step tracking not available on this device.");
+    return false;
+  }, []);
+
+  return { steps, isAvailable, error, source, refresh: fetchSteps, connect };
 }

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/useAuthStore";
 import {
@@ -153,7 +154,12 @@ export default function OnboardingScreen() {
                   onPress={() => setData({ ...data, goal: g.id })}
                   style={[styles.optionCard, data.goal === g.id && styles.optionCardSelected]}
                 >
-                  <Text style={styles.optionEmoji}>{g.icon}</Text>
+                  <Ionicons
+                    name={g.icon as any}
+                    size={28}
+                    color={data.goal === g.id ? "#0D0D0D" : "#fff"}
+                    style={{ marginBottom: 6 }}
+                  />
                   <Text style={[styles.optionLabel, data.goal === g.id && styles.optionLabelSelected]}>
                     {g.label}
                   </Text>
@@ -169,7 +175,12 @@ export default function OnboardingScreen() {
                   onPress={() => setData({ ...data, diet_type: d.id })}
                   style={[styles.optionCard, data.diet_type === d.id && styles.optionCardSelected]}
                 >
-                  <Text style={styles.optionEmoji}>{d.icon}</Text>
+                  <Ionicons
+                    name={d.icon as any}
+                    size={28}
+                    color={data.diet_type === d.id ? "#0D0D0D" : "#fff"}
+                    style={{ marginBottom: 6 }}
+                  />
                   <Text style={[styles.optionLabel, data.diet_type === d.id && styles.optionLabelSelected]}>
                     {d.label}
                   </Text>
@@ -291,10 +302,6 @@ const styles = {
   },
   optionCardSelected: {
     backgroundColor: "#A8FF3E",
-  },
-  optionEmoji: {
-    fontSize: 28,
-    marginBottom: 6,
   },
   optionLabel: {
     color: "#fff",

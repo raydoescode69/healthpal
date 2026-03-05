@@ -114,7 +114,7 @@ function pickMeal(
 // ── Convert KBMeal to DietMeal for output ────────────────────────
 function toDietMeal(meal: KBMeal, slot: MealSlot): DietMeal {
   return {
-    emoji: meal.emoji,
+    icon: meal.icon,
     name: meal.name,
     time: SLOT_TIMES[slot],
     cal: meal.cal,

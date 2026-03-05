@@ -148,10 +148,10 @@ export async function registerForPushNotifications(userId: string): Promise<stri
 // ── Meal Reminders ──────────────────────────────────────────────
 
 const MEAL_REMINDERS = [
-  { id: "meal-reminder-breakfast", meal: "Breakfast", hour: 8, body: "Time for breakfast! Log what you eat 🍳" },
-  { id: "meal-reminder-lunch", meal: "Lunch", hour: 12, body: "Lunch time! Don't forget to log your meal 🥗" },
-  { id: "meal-reminder-snack", meal: "Snack", hour: 15, body: "Snack time! Log it to stay on track 🍎" },
-  { id: "meal-reminder-dinner", meal: "Dinner", hour: 19, body: "Dinner time! Log your meal to complete the day 🍽️" },
+  { id: "meal-reminder-breakfast", meal: "Breakfast", hour: 8, body: "Time for breakfast! Log what you eat." },
+  { id: "meal-reminder-lunch", meal: "Lunch", hour: 12, body: "Lunch time! Don't forget to log your meal." },
+  { id: "meal-reminder-snack", meal: "Snack", hour: 15, body: "Snack time! Log it to stay on track." },
+  { id: "meal-reminder-dinner", meal: "Dinner", hour: 19, body: "Dinner time! Log your meal to complete the day." },
 ] as const;
 
 export async function cancelMealReminders(): Promise<void> {

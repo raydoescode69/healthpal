@@ -18,14 +18,8 @@ import { calculateTargets } from "../../lib/nutritionUtils";
 import { Ionicons } from "@expo/vector-icons";
 import ActivityRings from "../../components/ActivityRings";
 import { usePedometer } from "../../lib/usePedometer";
+import { getMealIcon } from "../../lib/mealIcons";
 import type { FoodLog } from "../../lib/types";
-
-const MEAL_EMOJI: Record<string, string> = {
-  breakfast: "\uD83C\uDF73",
-  lunch: "\uD83C\uDF5B",
-  snack: "\uD83C\uDF6A",
-  dinner: "\uD83C\uDF5D",
-};
 
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
@@ -53,7 +47,7 @@ function capitalize(s: string): string {
 }
 
 function FoodLogRow({ item, colors, onDelete }: { item: FoodLog; colors: ThemeColors; onDelete: () => void }) {
-  const emoji = MEAL_EMOJI[item.meal_type] || "\uD83C\uDF7D\uFE0F";
+  const mealIcon = getMealIcon(item.meal_type);
   const mealLabel = capitalize(item.meal_type);
 
   const handleDelete = () => {
@@ -78,7 +72,7 @@ function FoodLogRow({ item, colors, onDelete }: { item: FoodLog; colors: ThemeCo
         borderBottomColor: colors.separator,
       }}
     >
-      <Text style={{ fontSize: 22, marginRight: 12 }}>{emoji}</Text>
+      <Ionicons name={mealIcon as any} size={22} color={colors.accent} style={{ marginRight: 12 }} />
       <Text
         style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500", flex: 1 }}
         numberOfLines={1}
@@ -254,7 +248,7 @@ export default function DashboardScreen() {
             justifyContent: "center",
           }}
         >
-          <Text style={{ color: colors.textTertiary, fontSize: 22 }}>{"\u2190"}</Text>
+          <Ionicons name="arrow-back" size={22} color={colors.textTertiary} />
         </Pressable>
         <View style={{ flex: 1, alignItems: "center" }}>
           <Text
@@ -267,22 +261,36 @@ export default function DashboardScreen() {
             Dashboard
           </Text>
         </View>
-        <Pressable
-          onPress={() => setCalendarOpen((v) => !v)}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Ionicons
-            name={calendarOpen ? "calendar" : "calendar-outline"}
-            size={20}
-            color={colors.accent}
-          />
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Pressable
+            onPress={() => router.push("/(main)/edit-profile")}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="settings-outline" size={20} color={colors.textTertiary} />
+          </Pressable>
+          <Pressable
+            onPress={() => setCalendarOpen((v) => !v)}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons
+              name={calendarOpen ? "calendar" : "calendar-outline"}
+              size={20}
+              color={colors.accent}
+            />
+          </Pressable>
+        </View>
       </View>
 
       {/* Expandable Calendar */}
@@ -389,7 +397,7 @@ export default function DashboardScreen() {
             </View>
           ) : (
             <View style={{ paddingVertical: 40, alignItems: "center", paddingHorizontal: 32 }}>
-              <Text style={{ fontSize: 40, marginBottom: 12 }}>{"\uD83C\uDF7D\uFE0F"}</Text>
+              <Ionicons name="restaurant-outline" size={40} color={colors.textMuted} style={{ marginBottom: 12 }} />
               <Text style={{ color: colors.textMuted, fontSize: 15, textAlign: "center" }}>
                 {selectedDate === todayDateStr
                   ? "No food logged yet today"

@@ -93,7 +93,18 @@ export default function RootLayout() {
   // Wait for the first onAuthStateChange event OR a 2s timeout before allowing navigation
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, sess) => {
+      async (event, sess) => {
+        // Handle invalid/expired tokens — force sign out
+        if (event === "TOKEN_REFRESHED" && !sess) {
+          console.warn("[Auth] Token refresh failed, signing out");
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setAuthCheckDone(true);
+          return;
+        }
+
         setSession(sess);
         setUser(sess?.user ?? null);
         setAuthCheckDone(true);
@@ -110,6 +121,18 @@ export default function RootLayout() {
         }
       }
     );
+
+    // Also catch stale sessions on startup
+    supabase.auth.getSession().then(({ error }) => {
+      if (error?.message?.includes("Refresh Token")) {
+        console.warn("[Auth] Stale refresh token, signing out");
+        supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setAuthCheckDone(true);
+      }
+    });
 
     // Fallback: if onAuthStateChange doesn't fire within 2s, proceed anyway
     const timeout = setTimeout(() => {

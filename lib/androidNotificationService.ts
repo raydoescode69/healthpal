@@ -33,7 +33,14 @@ function buildNotificationContent(
     ? `${consumed.calories} / ${targets.calories} kcal \u2022 ${remaining} left`
     : `${consumed.calories} / ${targets.calories} kcal \u2022 Goal hit!`;
 
-  const body = `\uD83D\uDCAA ${consumed.protein_g}g pro    \uD83E\uDEE7 ${consumed.carbs_g}g carbs    \uD83E\uDD51 ${consumed.fat_g}g fat    \uD83D\uDC63 ${formatSteps(consumed.steps ?? 0)}    \uD83D\uDCA7 ${consumed.waterGlasses ?? 0}/8`;
+  const parts = [
+    `P: ${consumed.protein_g}g`,
+    `C: ${consumed.carbs_g}g`,
+    `F: ${consumed.fat_g}g`,
+    `Steps: ${formatSteps(consumed.steps ?? 0)}`,
+    `Water: ${consumed.waterGlasses ?? 0}/8`,
+  ];
+  const body = parts.join("  \u2022  ");
 
   return { title, body };
 }

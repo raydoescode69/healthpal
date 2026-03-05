@@ -22,31 +22,31 @@ export interface OnboardingData {
 }
 
 export const GENDERS = [
-  { id: "male", label: "Male", icon: "👨" },
-  { id: "female", label: "Female", icon: "👩" },
-  { id: "other", label: "Other", icon: "🧑" },
+  { id: "male", label: "Male", icon: "man-outline" },
+  { id: "female", label: "Female", icon: "woman-outline" },
+  { id: "other", label: "Other", icon: "person-outline" },
 ] as const;
 
 export const GOALS = [
-  { id: "lose_weight", label: "Lose Weight", icon: "🔥" },
-  { id: "gain_muscle", label: "Gain Muscle", icon: "💪" },
-  { id: "eat_healthy", label: "Eat Healthy", icon: "🥗" },
-  { id: "manage_stress", label: "Manage Stress", icon: "🧘" },
+  { id: "lose_weight", label: "Lose Weight", icon: "flame-outline" },
+  { id: "gain_muscle", label: "Gain Muscle", icon: "barbell-outline" },
+  { id: "eat_healthy", label: "Eat Healthy", icon: "nutrition-outline" },
+  { id: "manage_stress", label: "Manage Stress", icon: "leaf-outline" },
 ] as const;
 
 export const ACTIVITY_LEVELS = [
-  { id: "sedentary", label: "Sedentary", icon: "🪑", desc: "Desk job, little exercise" },
-  { id: "light", label: "Lightly Active", icon: "🚶", desc: "Light exercise 1-3 days/week" },
-  { id: "moderate", label: "Moderately Active", icon: "🏃", desc: "Exercise 3-5 days/week" },
-  { id: "very_active", label: "Very Active", icon: "💪", desc: "Hard exercise 6-7 days/week" },
+  { id: "sedentary", label: "Sedentary", icon: "desktop-outline", desc: "Desk job, little exercise" },
+  { id: "light", label: "Lightly Active", icon: "walk-outline", desc: "Light exercise 1-3 days/week" },
+  { id: "moderate", label: "Moderately Active", icon: "fitness-outline", desc: "Exercise 3-5 days/week" },
+  { id: "very_active", label: "Very Active", icon: "barbell-outline", desc: "Hard exercise 6-7 days/week" },
 ] as const;
 
 export const WORK_TIMINGS = [
-  { id: "morning", label: "Morning Shift", icon: "🌅", desc: "6 AM - 2 PM" },
-  { id: "regular", label: "Regular Hours", icon: "☀️", desc: "9 AM - 6 PM" },
-  { id: "evening", label: "Evening Shift", icon: "🌆", desc: "2 PM - 10 PM" },
-  { id: "night", label: "Night Shift", icon: "🌙", desc: "10 PM - 6 AM" },
-  { id: "flexible", label: "Flexible / WFH", icon: "🏠", desc: "Variable hours" },
+  { id: "morning", label: "Morning Shift", icon: "sunny-outline", desc: "6 AM - 2 PM" },
+  { id: "regular", label: "Regular Hours", icon: "sunny", desc: "9 AM - 6 PM" },
+  { id: "evening", label: "Evening Shift", icon: "partly-sunny-outline", desc: "2 PM - 10 PM" },
+  { id: "night", label: "Night Shift", icon: "moon-outline", desc: "10 PM - 6 AM" },
+  { id: "flexible", label: "Flexible / WFH", icon: "home-outline", desc: "Variable hours" },
 ] as const;
 
 export interface Message {
@@ -60,19 +60,20 @@ export interface Message {
 export const QUICK_ACTIONS = [
   { label: "Diet Plan", icon: "diet-plan" },
   { label: "Log Food", icon: "track-calories" },
+  { label: "Connectors", icon: "connectors" },
 ] as const;
 
 export const DIET_TYPES = [
-  { id: "veg", label: "Vegetarian", icon: "🥦" },
-  { id: "non_veg", label: "Non-Veg", icon: "🍗" },
-  { id: "vegan", label: "Vegan", icon: "🌱" },
-  { id: "keto", label: "Keto", icon: "🥑" },
-  { id: "no_preference", label: "No Preference", icon: "🍽️" },
+  { id: "veg", label: "Vegetarian", icon: "leaf-outline" },
+  { id: "non_veg", label: "Non-Veg", icon: "nutrition-outline" },
+  { id: "vegan", label: "Vegan", icon: "leaf" },
+  { id: "keto", label: "Keto", icon: "fitness-outline" },
+  { id: "no_preference", label: "No Preference", icon: "restaurant-outline" },
 ] as const;
 
 // ── Diet Plan types ──────────────────────────────────────────
 export interface DietMeal {
-  emoji: string;
+  icon: string;
   name: string;
   time: string;
   cal: number;

@@ -44,10 +44,19 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
       "expo-live-activity",
       "expo-router",
       "expo-font",
       "expo-secure-store",
+      "expo-asset",
       [
         "expo-notifications",
         {
@@ -67,6 +76,12 @@
         "expo-audio",
         {
           "microphonePermission": "Nyra needs microphone access for voice conversations."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Nyra needs access to your photos to show your recent food photos."
         }
       ],
       "@react-native-google-signin/google-signin",

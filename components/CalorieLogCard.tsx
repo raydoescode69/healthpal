@@ -4,13 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useThemeStore } from "../store/useThemeStore";
 import { THEMES } from "../lib/theme";
 import type { FoodAnalysisResult } from "../lib/types";
-
-const MEAL_EMOJIS: Record<string, string> = {
-  breakfast: "\uD83C\uDF73",
-  lunch: "\uD83C\uDF5B",
-  dinner: "\uD83C\uDF5D",
-  snack: "\uD83C\uDF6A",
-};
+import { getMealIcon } from "../lib/mealIcons";
 
 export default function CalorieLogCard({
   result,
@@ -21,7 +15,7 @@ export default function CalorieLogCard({
 }) {
   const mode = useThemeStore((s) => s.mode);
   const colors = THEMES[mode];
-  const emoji = MEAL_EMOJIS[result.meal_type?.toLowerCase() ?? ""] ?? "\uD83C\uDF7D\uFE0F";
+  const mealIcon = getMealIcon(result.meal_type);
   const mealLabel = result.meal_type
     ? result.meal_type.charAt(0).toUpperCase() + result.meal_type.slice(1)
     : "Meal";
@@ -63,7 +57,7 @@ export default function CalorieLogCard({
 
         {/* Header: emoji + food name + meal badge */}
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-          <Text style={{ fontSize: 22, marginRight: 10 }}>{emoji}</Text>
+          <Ionicons name={mealIcon as any} size={22} color={colors.accent} style={{ marginRight: 10 }} />
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "700" }} numberOfLines={2}>
               {result.food_name}

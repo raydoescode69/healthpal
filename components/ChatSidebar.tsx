@@ -391,7 +391,7 @@ export default function ChatSidebar({
             </View>
           ) : conversations.length === 0 ? (
             <View style={{ paddingVertical: 50, alignItems: "center", paddingHorizontal: 30 }}>
-              <Text style={{ fontSize: 36, marginBottom: 12 }}>{"\uD83D\uDCAC"}</Text>
+              <Ionicons name="chatbubbles-outline" size={36} color={colors.textSecondary} style={{ marginBottom: 12 }} />
               <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600", textAlign: "center", marginBottom: 4 }}>
                 No conversations yet
               </Text>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   StatusBar,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
@@ -24,6 +24,7 @@ import type { FoodAnalysisResult } from "../../lib/types";
 export default function TrackFoodScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ imageUri?: string; base64?: string }>();
   const session = useAuthStore((s) => s.session);
   const userId = session?.user?.id || "";
   const saveFoodLog = useTrackingStore((s) => s.saveFoodLog);
@@ -34,6 +35,28 @@ export default function TrackFoodScreen() {
   const [result, setResult] = useState<FoodAnalysisResult | null>(null);
   const [imageUri, setImageUri] = useState<string | undefined>();
   const [saved, setSaved] = useState(false);
+
+  // Auto-analyze if navigated from camera with an image
+  useEffect(() => {
+    if (params.imageUri && params.base64 && !imageUri && !analyzing && !result) {
+      const uri = params.imageUri;
+      const base64 = params.base64;
+      setImageUri(uri);
+      setAnalyzing(true);
+      analyzeFoodFromImage(base64, uri)
+        .then((analysis) => {
+          setResult(analysis);
+          setAnalyzing(false);
+        })
+        .catch((err: any) => {
+          setAnalyzing(false);
+          Alert.alert(
+            "Analysis Failed",
+            err?.message || "Could not analyze the image. Please try again."
+          );
+        });
+    }
+  }, [params.imageUri]);
 
   const pickImage = async (source: "camera" | "gallery") => {
     try {

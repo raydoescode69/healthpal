@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useThemeStore } from "../store/useThemeStore";
 import { THEMES } from "../lib/theme";
 import type { DietPlanData, DietMeal } from "../lib/types";
@@ -36,7 +37,7 @@ function MealRow({ meal, colors }: { meal: DietMeal; colors: typeof THEMES.dark 
             justifyContent: "center",
           }}
         >
-          <Text style={{ fontSize: 14 }}>{meal?.emoji || "\uD83C\uDF7D\uFE0F"}</Text>
+          <Ionicons name={(meal?.icon || "restaurant-outline") as any} size={14} color={colors.accent} />
         </View>
 
         <View style={{ flex: 1, marginLeft: 10 }}>
@@ -116,14 +117,18 @@ export default function DietPlanCard({
         }}
       >
         {isPinned && (
-          <Text style={{ color: colors.accent, fontSize: 10, marginBottom: 6 }}>
-            {"\uD83D\uDCCC"} Pinned
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+            <Ionicons name="pin" size={10} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: 10, marginLeft: 3 }}>Pinned</Text>
+          </View>
         )}
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: "bold" }}>
-            {"\uD83E\uDD57"} Your 7-Day Plan
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="nutrition-outline" size={16} color={colors.accent} style={{ marginRight: 6 }} />
+            <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: "bold" }}>
+              Your 7-Day Plan
+            </Text>
+          </View>
           {!plan?.is_personalized && onPersonalize && (
             <Pressable onPress={onPersonalize} style={{ opacity: 1 }}>
               <Text style={{ color: colors.accent, fontSize: 12 }}>

@@ -77,6 +77,17 @@ export default function LoginScreen() {
 
   // ── Native Google Sign-In (prod builds only) ──
   const handleGoogleSignIn = async () => {
+    // Check if running in Expo Go — native Google Sign-In is not available there
+    const Constants = require("expo-constants").default;
+    const isExpoGo = Constants.appOwnership === "expo";
+    if (isExpoGo) {
+      Alert.alert(
+        "Not available",
+        "Google Sign-In requires a production build. Please use email/password, or run: npx expo run:android"
+      );
+      return;
+    }
+
     let GoogleSignin: any = null;
     let statusCodes: any = null;
 
