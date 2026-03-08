@@ -144,3 +144,53 @@ export interface PinnedMessage {
   user_id: string;
   pinned_at: string;
 }
+
+// ── Aura Score types ──────────────────────────────────────
+export interface AuraScore {
+  id: string;
+  user_id: string;
+  score: number;
+  sleep_score: number;
+  nutrition_score: number;
+  movement_score: number;
+  hydration_score: number;
+  label: AuraLabel;
+  scored_at: string;
+  created_at: string;
+}
+
+export type AuraLabel = 'THRIVING' | 'RESTING' | 'PUSHING' | 'STRUGGLING';
+
+// ── Roast types ──────────────────────────────────────────
+export interface Roast {
+  id: string;
+  user_id: string;
+  roast_text: string;
+  verdict_title: string;
+  verdict_emoji: string;
+  calories: number;
+  steps: number;
+  sleep_hours: number;
+  scored_at: string;
+  created_at: string;
+}
+
+// ── Beast Bets types ──────────────────────────────────────
+export interface Challenge {
+  id: string;
+  creator_id: string;
+  title: string;
+  metric: 'steps' | 'calories' | 'workout_minutes';
+  target: number;
+  status: 'active' | 'completed' | 'cancelled';
+  created_at: string;
+  expires_at: string;
+}
+
+export interface ChallengeParticipant {
+  id: string;
+  challenge_id: string;
+  user_id: string;
+  current_value: number;
+  joined_at: string;
+}
