@@ -9,7 +9,7 @@
 - [ ] **AURA-04**: Score has a text label (THRIVING, RESTING, STRUGGLING, etc.) that updates based on score range
 - [ ] **AURA-05**: User can tap "Share My Aura" to generate and share a screenshot card of their aura
 - [ ] **AURA-06**: Aura score history is persisted to Supabase (daily snapshots)
-- [ ] **AURA-07**: Aura screen is accessible from sidebar and dashboard navigation
+- [x] **AURA-07**: Aura screen is accessible from sidebar and dashboard navigation
 
 ### Nyra Roasts
 - [ ] **ROAST-01**: User receives a nightly AI-generated personalized roast based on their day's data (calories, steps, sleep)
@@ -32,10 +32,10 @@
 - [ ] **BETS-08**: Challenge results are recorded when timer expires (winner/loser determined)
 
 ### Infrastructure
-- [ ] **INFRA-01**: New Supabase tables created for aura_scores, roasts, challenges, challenge_participants with RLS policies
-- [ ] **INFRA-02**: New Zustand stores for aura, roasts, and bets state management
-- [ ] **INFRA-03**: Navigation updated — new screens accessible from sidebar (ChatSidebar) and dashboard
-- [ ] **INFRA-04**: Share functionality uses react-native-view-shot + expo-sharing for all 3 features
+- [x] **INFRA-01**: New Supabase tables created for aura_scores, roasts, challenges, challenge_participants with RLS policies
+- [x] **INFRA-02**: New Zustand stores for aura, roasts, and bets state management
+- [x] **INFRA-03**: Navigation updated — new screens accessible from sidebar (ChatSidebar) and dashboard
+- [x] **INFRA-04**: Share functionality uses react-native-view-shot + expo-sharing for all 3 features
 
 ## v2 Requirements (Deferred)
 - Body Receipt (receipt-format daily summary)
@@ -56,17 +56,17 @@
 
 | REQ ID | Phase | Status |
 |--------|-------|--------|
-| INFRA-01 | Phase 1 | Pending |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
-| INFRA-04 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
+| INFRA-02 | Phase 1 | Complete |
+| INFRA-03 | Phase 1 | Complete |
+| INFRA-04 | Phase 1 | Complete |
 | AURA-01 | Phase 1 | Pending |
 | AURA-02 | Phase 1 | Pending |
 | AURA-03 | Phase 1 | Pending |
 | AURA-04 | Phase 1 | Pending |
 | AURA-05 | Phase 1 | Pending |
 | AURA-06 | Phase 1 | Pending |
-| AURA-07 | Phase 1 | Pending |
+| AURA-07 | Phase 1 | Complete |
 | ROAST-01 | Phase 2 | Pending |
 | ROAST-02 | Phase 2 | Pending |
 | ROAST-03 | Phase 2 | Pending |
