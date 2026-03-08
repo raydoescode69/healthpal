@@ -44,10 +44,10 @@ Plans:
   3. User can tap "Share the L" to generate and share a roast card image via native share sheet
   4. User can tap "Redemption?" to navigate back to the main chat for motivation
   5. Roast history persists across sessions (stored in Supabase)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 02-01: Roast generation (GPT-4o prompt, verdict system) and roast screen UI with sharing
+- [ ] 02-01-PLAN.md — GPT-4o roast engine, roast screen UI (bubble, stat pills, verdict), and shareable roast card
 
 ### Phase 3: Beast Bets
 **Goal**: Users can create 24-hour health challenges, invite friends, track progress on a live leaderboard, and see results when the timer expires
