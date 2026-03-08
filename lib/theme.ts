@@ -90,6 +90,18 @@ export const THEMES = {
     // Danger
     danger: "#E57373",
     dangerBg: "#2a1515",
+
+    // Bets
+    betOrange: "#ff9a3c",
+    betRed: "#ff4d4d",
+    betCardBg: "rgba(255,154,60,0.05)",
+    betCardBorder: "#ff9a3c",
+    betLiveBadgeBg: "rgba(255,154,60,0.15)",
+    betLiveBadgeBorder: "rgba(255,154,60,0.3)",
+    betPlayerBg: "#141414",
+    betPlayerMeBg: "rgba(255,154,60,0.08)",
+    betTimerBg: "#111",
+    betGold: "#FFD700",
   },
   light: {
     // Core
@@ -182,6 +194,18 @@ export const THEMES = {
     // Danger
     danger: "#D32F2F",
     dangerBg: "#FFEBEE",
+
+    // Bets
+    betOrange: "#E68A00",
+    betRed: "#D32F2F",
+    betCardBg: "rgba(230,138,0,0.06)",
+    betCardBorder: "#E68A00",
+    betLiveBadgeBg: "rgba(230,138,0,0.12)",
+    betLiveBadgeBorder: "rgba(230,138,0,0.25)",
+    betPlayerBg: "#F5F5F5",
+    betPlayerMeBg: "rgba(230,138,0,0.08)",
+    betTimerBg: "#F0F0F0",
+    betGold: "#B8860B",
   },
 };
 

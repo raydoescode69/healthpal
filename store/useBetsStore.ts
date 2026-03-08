@@ -1,73 +1,44 @@
 import { create } from "zustand";
-import { supabase } from "../lib/supabase";
-import type { Challenge, ChallengeParticipant } from "../lib/types";
+import type { Challenge } from "../lib/types";
+import {
+  createChallenge as createChallengeService,
+  loadUserChallenges,
+  loadChallengeDetail,
+  subscribeToChallenge,
+  resolveExpiredChallenges,
+  type EnrichedParticipant,
+} from "../lib/betsService";
 
 interface BetsState {
   challenges: Challenge[];
   activeChallenge: Challenge | null;
-  participants: ChallengeParticipant[];
+  participants: EnrichedParticipant[];
   isLoading: boolean;
+  _unsubscribe: (() => void) | null;
 
   loadChallenges: (userId: string) => Promise<void>;
   loadChallenge: (challengeId: string) => Promise<void>;
   createChallenge: (
     userId: string,
-    data: { title: string; metric: string; target: number; expires_at: string }
-  ) => Promise<void>;
-  updateProgress: (participantId: string, value: number) => Promise<void>;
+    data: { title: string; metric: Challenge["metric"]; target: number }
+  ) => Promise<Challenge | null>;
+  subscribeToActive: (challengeId: string) => void;
+  unsubscribeFromActive: () => void;
   clearBets: () => void;
 }
 
-export const useBetsStore = create<BetsState>()((set) => ({
+export const useBetsStore = create<BetsState>()((set, get) => ({
   challenges: [],
   activeChallenge: null,
   participants: [],
   isLoading: false,
+  _unsubscribe: null,
 
   loadChallenges: async (userId: string) => {
     set({ isLoading: true });
     try {
-      // Get challenges where user is creator
-      const { data: created, error: e1 } = await supabase
-        .from("challenges")
-        .select("*")
-        .eq("creator_id", userId);
-
-      if (e1) throw e1;
-
-      // Get challenges where user is participant
-      const { data: participated, error: e2 } = await supabase
-        .from("challenge_participants")
-        .select("challenge_id")
-        .eq("user_id", userId);
-
-      if (e2) throw e2;
-
-      const participatedIds = (participated || []).map(
-        (p: { challenge_id: string }) => p.challenge_id
-      );
-
-      let participatedChallenges: Challenge[] = [];
-      if (participatedIds.length > 0) {
-        const { data, error: e3 } = await supabase
-          .from("challenges")
-          .select("*")
-          .in("id", participatedIds);
-
-        if (e3) throw e3;
-        participatedChallenges = (data as Challenge[]) || [];
-      }
-
-      // Merge and deduplicate
-      const allChallenges = [...(created || []), ...participatedChallenges];
-      const seen = new Set<string>();
-      const unique = allChallenges.filter((c) => {
-        if (seen.has(c.id)) return false;
-        seen.add(c.id);
-        return true;
-      });
-
-      set({ challenges: unique as Challenge[], isLoading: false });
+      const challenges = await loadUserChallenges(userId);
+      set({ challenges, isLoading: false });
     } catch {
       set({ isLoading: false });
     }
@@ -76,26 +47,8 @@ export const useBetsStore = create<BetsState>()((set) => ({
   loadChallenge: async (challengeId: string) => {
     set({ isLoading: true });
     try {
-      const { data: challenge, error: e1 } = await supabase
-        .from("challenges")
-        .select("*")
-        .eq("id", challengeId)
-        .single();
-
-      if (e1) throw e1;
-
-      const { data: parts, error: e2 } = await supabase
-        .from("challenge_participants")
-        .select("*")
-        .eq("challenge_id", challengeId);
-
-      if (e2) throw e2;
-
-      set({
-        activeChallenge: challenge as Challenge,
-        participants: (parts as ChallengeParticipant[]) || [],
-        isLoading: false,
-      });
+      const { challenge, participants } = await loadChallengeDetail(challengeId);
+      set({ activeChallenge: challenge, participants, isLoading: false });
     } catch {
       set({ isLoading: false });
     }
@@ -103,49 +56,46 @@ export const useBetsStore = create<BetsState>()((set) => ({
 
   createChallenge: async (
     userId: string,
-    data: { title: string; metric: string; target: number; expires_at: string }
+    data: { title: string; metric: Challenge["metric"]; target: number }
   ) => {
     set({ isLoading: true });
     try {
-      const { data: challenge, error: e1 } = await supabase
-        .from("challenges")
-        .insert({ creator_id: userId, ...data })
-        .select()
-        .single();
-
-      if (e1) throw e1;
-
-      // Add creator as first participant
-      await supabase
-        .from("challenge_participants")
-        .insert({ challenge_id: challenge.id, user_id: userId });
-
+      const challenge = await createChallengeService(userId, data);
       set((s) => ({
-        challenges: [...s.challenges, challenge as Challenge],
+        challenges: [...s.challenges, challenge],
         isLoading: false,
       }));
+      return challenge;
     } catch {
       set({ isLoading: false });
+      return null;
     }
   },
 
-  updateProgress: async (participantId: string, value: number) => {
-    try {
-      const { error } = await supabase
-        .from("challenge_participants")
-        .update({ current_value: value })
-        .eq("id", participantId);
+  subscribeToActive: (challengeId: string) => {
+    const prev = get()._unsubscribe;
+    if (prev) prev();
 
-      if (error) throw error;
-
-      set((s) => ({
-        participants: s.participants.map((p) =>
-          p.id === participantId ? { ...p, current_value: value } : p
-        ),
-      }));
-    } catch {}
+    const unsubscribe = subscribeToChallenge(challengeId, (participants) => {
+      set({ participants });
+    });
+    set({ _unsubscribe: unsubscribe });
   },
 
-  clearBets: () =>
-    set({ challenges: [], activeChallenge: null, participants: [] }),
+  unsubscribeFromActive: () => {
+    const unsub = get()._unsubscribe;
+    if (unsub) unsub();
+    set({ _unsubscribe: null });
+  },
+
+  clearBets: () => {
+    const unsub = get()._unsubscribe;
+    if (unsub) unsub();
+    set({
+      challenges: [],
+      activeChallenge: null,
+      participants: [],
+      _unsubscribe: null,
+    });
+  },
 }));
