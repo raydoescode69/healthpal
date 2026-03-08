@@ -3,12 +3,12 @@
 ## v1 Requirements
 
 ### Aura Score
-- [ ] **AURA-01**: User sees a daily Aura Score (0-100) calculated from sleep, nutrition, hydration, and movement data
-- [ ] **AURA-02**: Aura screen displays an animated glowing orb that changes color based on score (lime=thriving, blue=rested, orange=low, red=rough)
-- [ ] **AURA-03**: Aura screen shows stat breakdown (Sleep, Nutrition, Movement, Hydration) with progress bars and values
-- [ ] **AURA-04**: Score has a text label (THRIVING, RESTING, STRUGGLING, etc.) that updates based on score range
-- [ ] **AURA-05**: User can tap "Share My Aura" to generate and share a screenshot card of their aura
-- [ ] **AURA-06**: Aura score history is persisted to Supabase (daily snapshots)
+- [x] **AURA-01**: User sees a daily Aura Score (0-100) calculated from sleep, nutrition, hydration, and movement data
+- [x] **AURA-02**: Aura screen displays an animated glowing orb that changes color based on score (lime=thriving, blue=rested, orange=low, red=rough)
+- [x] **AURA-03**: Aura screen shows stat breakdown (Sleep, Nutrition, Movement, Hydration) with progress bars and values
+- [x] **AURA-04**: Score has a text label (THRIVING, RESTING, STRUGGLING, etc.) that updates based on score range
+- [x] **AURA-05**: User can tap "Share My Aura" to generate and share a screenshot card of their aura
+- [x] **AURA-06**: Aura score history is persisted to Supabase (daily snapshots)
 - [x] **AURA-07**: Aura screen is accessible from sidebar and dashboard navigation
 
 ### Nyra Roasts
@@ -60,12 +60,12 @@
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
 | INFRA-04 | Phase 1 | Complete |
-| AURA-01 | Phase 1 | Pending |
-| AURA-02 | Phase 1 | Pending |
-| AURA-03 | Phase 1 | Pending |
-| AURA-04 | Phase 1 | Pending |
-| AURA-05 | Phase 1 | Pending |
-| AURA-06 | Phase 1 | Pending |
+| AURA-01 | Phase 1 | Complete |
+| AURA-02 | Phase 1 | Complete |
+| AURA-03 | Phase 1 | Complete |
+| AURA-04 | Phase 1 | Complete |
+| AURA-05 | Phase 1 | Complete |
+| AURA-06 | Phase 1 | Complete |
 | AURA-07 | Phase 1 | Complete |
 | ROAST-01 | Phase 2 | Pending |
 | ROAST-02 | Phase 2 | Pending |
