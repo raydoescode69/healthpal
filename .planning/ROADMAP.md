@@ -59,11 +59,11 @@ Plans:
   3. Countdown timer displays time remaining until the bet expires at midnight
   4. Leaderboard updates in real-time as participants' progress changes (via Supabase subscriptions)
   5. Challenge results are automatically determined when the timer expires (winner/loser recorded)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Challenge creation, invite links, bet data model, and Supabase real-time subscriptions
-- [ ] 03-02: Bet screen UI -- leaderboard, countdown timer, results display
+- [ ] 03-01-PLAN.md — Challenge creation, invite sharing, bets service layer, Zustand store with realtime subscriptions
+- [ ] 03-02-PLAN.md — Bet detail screen with live leaderboard, countdown timer, progress tracking, results display
 
 ## Progress
 
