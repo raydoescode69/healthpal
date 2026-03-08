@@ -28,7 +28,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User sees a stat breakdown (Sleep, Nutrition, Movement, Hydration) with progress bars below the orb
   4. User can tap "Share My Aura" and a shareable card image opens in the native share sheet
   5. Aura score snapshots persist across app restarts (stored in Supabase)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 01-01: Supabase tables, RLS policies, Zustand stores, and navigation wiring
