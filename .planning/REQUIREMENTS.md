@@ -56,7 +56,30 @@
 
 | REQ ID | Phase | Status |
 |--------|-------|--------|
-| AURA-01 through AURA-07 | TBD | Pending |
-| ROAST-01 through ROAST-08 | TBD | Pending |
-| BETS-01 through BETS-08 | TBD | Pending |
-| INFRA-01 through INFRA-04 | TBD | Pending |
+| INFRA-01 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Pending |
+| INFRA-03 | Phase 1 | Pending |
+| INFRA-04 | Phase 1 | Pending |
+| AURA-01 | Phase 1 | Pending |
+| AURA-02 | Phase 1 | Pending |
+| AURA-03 | Phase 1 | Pending |
+| AURA-04 | Phase 1 | Pending |
+| AURA-05 | Phase 1 | Pending |
+| AURA-06 | Phase 1 | Pending |
+| AURA-07 | Phase 1 | Pending |
+| ROAST-01 | Phase 2 | Pending |
+| ROAST-02 | Phase 2 | Pending |
+| ROAST-03 | Phase 2 | Pending |
+| ROAST-04 | Phase 2 | Pending |
+| ROAST-05 | Phase 2 | Pending |
+| ROAST-06 | Phase 2 | Pending |
+| ROAST-07 | Phase 2 | Pending |
+| ROAST-08 | Phase 2 | Pending |
+| BETS-01 | Phase 3 | Pending |
+| BETS-02 | Phase 3 | Pending |
+| BETS-03 | Phase 3 | Pending |
+| BETS-04 | Phase 3 | Pending |
+| BETS-05 | Phase 3 | Pending |
+| BETS-06 | Phase 3 | Pending |
+| BETS-07 | Phase 3 | Pending |
+| BETS-08 | Phase 3 | Pending |
