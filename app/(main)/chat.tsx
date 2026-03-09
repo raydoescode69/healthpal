@@ -523,8 +523,8 @@ function WaterPrompt({
   );
 }
 
-// ── Context Menu Modal (WhatsApp-style) ─────────────────────────
-const CONTEXT_MENU_WIDTH = 220;
+// ── Context Menu Modal (Nyra design) ─────────────────────────────
+const CONTEXT_MENU_WIDTH = SCREEN_W - 64;
 
 function ContextMenuModal({
   visible,
@@ -532,6 +532,7 @@ function ContextMenuModal({
   onReply,
   onCopy,
   onPin,
+  onDelete,
   isPinned,
   menuY,
   menuX,
@@ -543,50 +544,56 @@ function ContextMenuModal({
   onReply: () => void;
   onCopy: () => void;
   onPin: () => void;
+  onDelete: () => void;
   isPinned: boolean;
   menuY: number;
   menuX: number;
   isUserMessage: boolean;
   colors: typeof THEMES.dark;
 }) {
+  const isDark = colors === THEMES.dark;
+
+  // Theme colors matching the HTML design
+  const t = {
+    scrim: isDark ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.3)",
+    menuBg: isDark ? "rgba(18,18,22,0.96)" : "rgba(255,255,255,0.98)",
+    menuBorder: isDark ? "rgba(255,255,255,0.09)" : "rgba(12,10,8,0.07)",
+    separator: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,10,8,0.06)",
+    label: isDark ? "rgba(255,255,255,0.82)" : "rgba(12,10,8,0.82)",
+    iconBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,10,8,0.05)",
+    iconColor: isDark ? "rgba(255,255,255,0.45)" : "rgba(12,10,8,0.45)",
+    replyIconBg: isDark ? "rgba(190,241,53,0.08)" : "rgba(12,10,8,0.07)",
+    replyIconColor: isDark ? "#bef135" : "rgba(12,10,8,0.7)",
+    chevron: isDark ? "rgba(255,255,255,0.2)" : "rgba(12,10,8,0.18)",
+    replyChevron: isDark ? "rgba(190,241,53,0.4)" : "rgba(12,10,8,0.2)",
+    deleteIconBg: isDark ? "rgba(255,80,80,0.08)" : "rgba(220,38,38,0.07)",
+    deleteIconColor: isDark ? "rgba(255,100,100,0.7)" : "rgba(220,38,38,0.7)",
+    deleteLabel: isDark ? "rgba(255,100,100,0.75)" : "rgba(220,38,38,0.72)",
+    deleteChevron: isDark ? "rgba(255,100,100,0.35)" : "rgba(220,38,38,0.3)",
+    pressed: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
+  };
+
   const options = [
-    { label: "Reply", icon: "arrow-undo-outline" as keyof typeof Ionicons.glyphMap, action: onReply },
-    { label: "Copy", icon: "copy-outline" as keyof typeof Ionicons.glyphMap, action: onCopy },
-    { label: isPinned ? "Unpin" : "Pin", icon: (isPinned ? "pin-outline" : "pin") as keyof typeof Ionicons.glyphMap, action: onPin },
+    { key: "reply", label: "Reply", icon: "arrow-undo-outline" as keyof typeof Ionicons.glyphMap, action: onReply },
+    { key: "copy", label: "Copy", icon: "copy-outline" as keyof typeof Ionicons.glyphMap, action: onCopy },
+    { key: "pin", label: isPinned ? "Unpin message" : "Pin message", icon: "pin-outline" as keyof typeof Ionicons.glyphMap, action: onPin },
+    { key: "delete", label: "Delete", icon: "trash-outline" as keyof typeof Ionicons.glyphMap, action: onDelete },
   ];
 
-  const ITEM_HEIGHT = 56;
-  const MENU_PADDING = 12;
-  const MENU_HEIGHT = options.length * ITEM_HEIGHT + MENU_PADDING * 2;
+  const ITEM_HEIGHT = 50;
+  const MENU_HEIGHT = options.length * ITEM_HEIGHT;
 
-  // Vertical: prefer showing below the press point, flip above if near bottom
   const isNearBottom = menuY + MENU_HEIGHT + 20 > SCREEN_H;
   const clampedTop = isNearBottom
     ? Math.max(40, menuY - MENU_HEIGHT - 8)
     : menuY + 8;
 
-  // Horizontal: anchor near the bubble — right-aligned for user msgs, left-aligned for bot
-  const horizontalMargin = 16;
-  let menuLeft: number;
-  if (isUserMessage) {
-    menuLeft = Math.max(horizontalMargin, SCREEN_W - CONTEXT_MENU_WIDTH - horizontalMargin);
-  } else {
-    menuLeft = horizontalMargin;
-  }
-  // If we have an actual press X coordinate, use it to better anchor
-  if (menuX > 0) {
-    const preferred = isUserMessage
-      ? Math.min(menuX, SCREEN_W - CONTEXT_MENU_WIDTH - horizontalMargin)
-      : Math.max(horizontalMargin, menuX - CONTEXT_MENU_WIDTH / 2);
-    menuLeft = Math.max(horizontalMargin, Math.min(preferred, SCREEN_W - CONTEXT_MENU_WIDTH - horizontalMargin));
-  }
-
-  const isDark = colors === THEMES.dark;
+  const menuLeft = 32;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <Pressable
-        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)" }}
+        style={{ flex: 1, backgroundColor: t.scrim }}
         onPress={onClose}
       >
         <Animated.View
@@ -596,47 +603,87 @@ function ContextMenuModal({
             top: clampedTop,
             left: menuLeft,
             width: CONTEXT_MENU_WIDTH,
-            backgroundColor: isDark ? "rgba(44,44,46,0.98)" : "rgba(255,255,255,0.98)",
-            borderRadius: 14,
-            paddingVertical: MENU_PADDING,
+            backgroundColor: t.menuBg,
+            borderRadius: 18,
+            borderWidth: 1,
+            borderColor: t.menuBorder,
             shadowColor: "#000",
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: isDark ? 0.5 : 0.15,
-            shadowRadius: 20,
-            elevation: 12,
+            shadowOffset: { width: 0, height: 16 },
+            shadowOpacity: isDark ? 0.5 : 0.16,
+            shadowRadius: 48,
+            elevation: 16,
             overflow: "hidden",
           }}
         >
-          {options.map((opt, i) => (
-            <Pressable
-              key={opt.label}
-              onPress={() => {
-                onClose();
-                opt.action();
-              }}
-              style={({ pressed }) => ({
-                paddingHorizontal: 16,
-                height: ITEM_HEIGHT,
-                backgroundColor: pressed ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
-              })}
-            >
-              <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-                <Ionicons
-                  name={opt.icon}
-                  size={20}
-                  color={opt.label === "Unpin" ? "#FF6B6B" : (isDark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.5)")}
-                />
-                <Text style={{
-                  color: opt.label === "Unpin" ? "#FF6B6B" : (isDark ? "#fff" : "#1a1a1a"),
-                  fontSize: 16,
-                  fontWeight: "500",
-                  marginLeft: 12,
+          {options.map((opt, i) => {
+            const isDelete = opt.key === "delete";
+            const isReply = opt.key === "reply";
+            const isLast = i === options.length - 1;
+
+            return (
+              <Pressable
+                key={opt.key}
+                onPress={() => {
+                  onClose();
+                  opt.action();
+                }}
+                style={({ pressed }) => ({
+                  backgroundColor: pressed ? t.pressed : "transparent",
+                })}
+              >
+                <View style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 18,
+                  height: ITEM_HEIGHT,
                 }}>
-                  {opt.label}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
+                  {/* Icon box */}
+                  <View style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    backgroundColor: isDelete ? t.deleteIconBg : isReply ? t.replyIconBg : t.iconBg,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}>
+                    <Ionicons
+                      name={opt.icon}
+                      size={14}
+                      color={isDelete ? t.deleteIconColor : isReply ? t.replyIconColor : t.iconColor}
+                    />
+                  </View>
+
+                  {/* Label */}
+                  <Text style={{
+                    flex: 1,
+                    marginLeft: 12,
+                    fontSize: 14,
+                    fontWeight: "400",
+                    letterSpacing: -0.14,
+                    color: isDelete ? t.deleteLabel : t.label,
+                  }}>
+                    {opt.label}
+                  </Text>
+
+                  {/* Chevron */}
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={isDelete ? t.deleteChevron : isReply ? t.replyChevron : t.chevron}
+                  />
+                </View>
+
+                {/* Separator line */}
+                {!isLast && (
+                  <View style={{
+                    height: 1,
+                    marginHorizontal: 18,
+                    backgroundColor: t.separator,
+                  }} />
+                )}
+              </Pressable>
+            );
+          })}
         </Animated.View>
       </Pressable>
     </Modal>
@@ -651,7 +698,7 @@ export default function ChatScreen() {
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const logout = useAuthStore((s) => s.logout);
-  const { addWater, waterGlasses, saveFoodLog, loadTodayLogs } = useTrackingStore();
+  const { addWater, waterGlasses, steps, stepGoal, saveFoodLog, loadTodayLogs, getDailySummary } = useTrackingStore();
   const flatListRef = useRef<FlatList>(null);
 
   // Theme
@@ -747,14 +794,28 @@ export default function ChatScreen() {
 
   // ── Load chat history + food logs on mount ──────────────────
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      // No user yet — show welcome instead of stuck loading
+      setLoadingHistory(false);
+      setShowWelcomeScreen(true);
+      return;
+    }
     loadLatestConversation();
     loadTodayLogs(userId);
 
-    // Safety: force dismiss loading screen after 5s if stuck
+    // Safety: force show welcome screen after 3s if stuck loading
+    // Only force welcome if we haven't loaded messages yet
     const timeout = setTimeout(() => {
-      setLoadingHistory(false);
-    }, 5000);
+      setLoadingHistory((current) => {
+        if (current) {
+          // Still loading after 3s — force show welcome
+          setShowWelcomeScreen(true);
+          return false;
+        }
+        // Already finished loading — don't touch welcome screen
+        return current;
+      });
+    }, 3000);
     return () => clearTimeout(timeout);
   }, [userId]);
 
@@ -821,12 +882,18 @@ export default function ChatScreen() {
   const loadLatestConversation = async () => {
     console.log("[Chat] loadLatestConversation called, userId:", userId);
     try {
-      const { data: convs, error: convsError } = await supabase
-        .from("conversations")
-        .select("id, title, created_at")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(1);
+      const convsResult = await Promise.race([
+        supabase
+          .from("conversations")
+          .select("id, title, created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1),
+        new Promise<{ data: null; error: { message: string } }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: { message: "timeout" } }), 5000)
+        ),
+      ]);
+      const { data: convs, error: convsError } = convsResult;
 
       console.log("[Chat] Conversations found:", convs?.length || 0, convsError?.message || "OK");
 
@@ -839,23 +906,25 @@ export default function ChatScreen() {
 
         const { data: msgs, error: msgsError } = await supabase
           .from("messages")
-          .select("*")
+          .select("id,role,content,created_at")
           .eq("user_id", userId)
           .eq("conversation_id", latestConv.id)
           .order("created_at", { ascending: true })
-          .limit(1000);
+          .limit(100);
 
         console.log("[Chat] Messages loaded:", msgs?.length || 0, msgsError?.message || "OK");
 
         if (msgs && msgs.length > 0) {
           setMessages(msgs);
           setLoadingHistory(false);
+          setShowWelcomeScreen(false);
           return;
         }
       }
 
+      // Only show welcome screen when there are no messages
       setLoadingHistory(false);
-      showStaticWelcome();
+      setShowWelcomeScreen(true);
     } catch (e) {
       console.warn("[Chat] loadLatestConversation error:", e);
       setLoadingHistory(false);
@@ -954,11 +1023,11 @@ export default function ChatScreen() {
     try {
       const { data: msgs, error } = await supabase
         .from("messages")
-        .select("*")
+        .select("id,role,content,created_at")
         .eq("user_id", userId)
         .eq("conversation_id", conv.id)
         .order("created_at", { ascending: true })
-        .limit(1000);
+        .limit(100);
 
       if (error) console.warn("[DB] Load conversation messages failed:", error.message);
 
@@ -1012,7 +1081,9 @@ export default function ChatScreen() {
 
   // ── Handle personalize button ──────────────────────────────
   const handlePersonalize = useCallback(() => {
-    handleSend("yes, customize my diet plan");
+    // Keep dietPlanShownRef TRUE so chatEngine takes the personalize path
+    // (asks lifestyle questions instead of generating a new plan immediately)
+    handleSend("I want to personalize my diet plan based on my lifestyle and routine");
   }, []);
 
   // ── Load pinned messages from Supabase ──────────────────────
@@ -1157,6 +1228,20 @@ export default function ChatScreen() {
       handlePinMessage(contextMenuItem.id);
     }
   }, [contextMenuItem, handlePinMessage]);
+
+  const handleContextDelete = useCallback(() => {
+    if (!contextMenuItem) return;
+    Alert.alert("Delete message", "Are you sure you want to delete this message?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          setMessages((prev) => prev.filter((m) => m.id !== contextMenuItem.id));
+        },
+      },
+    ]);
+  }, [contextMenuItem]);
 
   // ── Logout handler ─────────────────────────────────────────
   const handleLogout = async () => {
@@ -1422,6 +1507,7 @@ export default function ChatScreen() {
 
   const handleFoodAnalyzed = async (result: FoodAnalysisResult, imageUri?: string) => {
     try {
+      setShowWelcomeScreen(false);
       setIsLoading(true);
       setShowTypingIndicator(true);
       forceScrollToEnd();
@@ -1579,7 +1665,7 @@ export default function ChatScreen() {
     lastMsg?.content === currentBubbleText;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: showWelcomeScreen ? (mode === "dark" ? "#060607" : "#f4f1ec") : colors.bg }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -1588,30 +1674,37 @@ export default function ChatScreen() {
         <View
           style={{
             paddingTop: insets.top + 6,
-            paddingHorizontal: 20,
+            paddingHorizontal: 22,
             paddingBottom: 12,
-            backgroundColor: colors.headerBg,
-            shadowColor: "#000",
+            backgroundColor: showWelcomeScreen
+              ? (mode === "dark" ? "#060607" : "#f4f1ec")
+              : colors.headerBg,
+            shadowColor: showWelcomeScreen ? "transparent" : "#000",
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: mode === "dark" ? 0.3 : 0.08,
+            shadowOpacity: showWelcomeScreen ? 0 : (mode === "dark" ? 0.3 : 0.08),
             shadowRadius: 6,
-            elevation: 4,
+            elevation: showWelcomeScreen ? 0 : 4,
             zIndex: 10,
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Pressable
               onPress={() => setSidebarOpen(true)}
+              hitSlop={12}
               style={({ pressed }) => ({
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+                width: 44,
+                height: 44,
+                borderRadius: 22,
                 alignItems: "center",
                 justifyContent: "center",
                 opacity: pressed ? 0.5 : 1,
               })}
             >
-              <Ionicons name="menu" size={22} color={colors.subText} />
+              {/* Two-line menu */}
+              <View style={{ gap: 3.5 }}>
+                <View style={{ width: 18, height: 1.5, borderRadius: 2, backgroundColor: mode === "dark" ? "rgba(255,255,255,0.5)" : "rgba(12,10,8,0.45)" }} />
+                <View style={{ width: 12, height: 1.5, borderRadius: 2, backgroundColor: mode === "dark" ? "rgba(255,255,255,0.5)" : "rgba(12,10,8,0.45)" }} />
+              </View>
             </Pressable>
 
             <Pressable
@@ -1622,7 +1715,7 @@ export default function ChatScreen() {
                 opacity: pressed ? 0.7 : 1,
               })}
             >
-              <Text style={{ fontSize: 17, color: colors.headerText, fontWeight: "600" }}>
+              <Text style={{ fontSize: 17, color: mode === "dark" ? "#f5f5f0" : "#0c0a08", fontWeight: "400", letterSpacing: -0.2 }}>
                 Nyra
               </Text>
             </Pressable>
@@ -1642,9 +1735,8 @@ export default function ChatScreen() {
             >
               <Ionicons
                 name={isVoiceMode ? "close" : "call-outline"}
-                size={20}
-                color={isVoiceMode ? colors.accent : colors.subText}
-              />
+                size={16}
+                color={isVoiceMode ? colors.accent : (mode === "dark" ? "rgba(255,255,255,0.38)" : "rgba(12,10,8,0.3)")}/>
             </Pressable>
           </View>
         </View>
@@ -1662,69 +1754,250 @@ export default function ChatScreen() {
         {/* Messages container */}
         <View style={{ flex: 1 }}>
           {showWelcomeScreen ? (
-            <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 28 }}>
-              <Animated.View entering={FadeIn.duration(500)}>
-                <Text style={{ color: colors.subText, fontSize: 16, marginBottom: 4 }}>
-                  Hi {profile?.name || "there"}
-                </Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 28, fontWeight: "700", marginBottom: 32 }}>
-                  Where should we start?
-                </Text>
-
-                <View style={{
-                  backgroundColor: mode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.6)",
-                  borderWidth: 1,
-                  borderColor: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-                  borderRadius: 20,
-                  padding: 14,
-                  gap: 10,
-                  ...(Platform.OS === "ios" ? {} : {}),
-                  shadowColor: mode === "dark" ? "#000" : "#888",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: mode === "dark" ? 0.3 : 0.08,
-                  shadowRadius: 12,
-                  elevation: 4,
-                  overflow: "hidden",
-                }}>
-                  {/* Glass blur overlay */}
+            <Pressable onPress={Keyboard.dismiss} style={{ flex: 1, backgroundColor: mode === "dark" ? "#060607" : "#f4f1ec" }}>
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ flexGrow: 1 }}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {/* ── Hero card ── */}
+                <Animated.View
+                  entering={FadeIn.duration(400)}
+                  style={{
+                    backgroundColor: mode === "dark" ? "#111210" : "#0c0a08",
+                    borderRadius: 24,
+                    margin: 14,
+                    marginTop: 14,
+                    paddingHorizontal: 20,
+                    paddingTop: 22,
+                    paddingBottom: 20,
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* Glow */}
                   <View style={{
                     position: "absolute",
-                    top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: mode === "dark" ? "rgba(30,30,30,0.5)" : "rgba(245,245,245,0.5)",
-                    borderRadius: 20,
+                    top: -50,
+                    right: -50,
+                    width: 160,
+                    height: 160,
+                    borderRadius: 80,
+                    backgroundColor: "rgba(190,241,53,0.18)",
                   }} />
 
-                  {[
-                    { key: "diet_plan", label: "Diet Plan", icon: "nutrition-outline" as const },
-                    { key: "track_calories", label: "Track Calories", icon: "camera-outline" as const },
-                    { key: "advice", label: "Health Advice", icon: "heart-outline" as const },
-                  ].map((item) => (
-                    <Pressable
-                      key={item.key}
-                      onPress={() => handleWelcomeAction(item.key)}
-                      style={({ pressed }) => ({
-                        flexDirection: "row",
-                        alignItems: "center",
-                        backgroundColor: pressed
-                          ? (mode === "dark" ? "rgba(168,255,62,0.1)" : "rgba(91,170,34,0.08)")
-                          : (mode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)"),
-                        borderWidth: 1,
-                        borderColor: mode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
-                        borderRadius: 14,
-                        paddingHorizontal: 16,
-                        height: 48,
-                      })}
-                    >
-                      <Ionicons name={item.icon} size={18} color={colors.accent} style={{ marginRight: 10 }} />
-                      <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", flex: 1 }}>
-                        {item.label}
+                  <Text style={{ fontSize: 11, color: mode === "dark" ? "rgba(255,255,255,0.35)" : "rgba(244,241,236,0.38)", marginBottom: 5 }}>
+                    Hi {profile?.name || "there"}
+                  </Text>
+                  <Text style={{
+                    fontSize: 30,
+                    fontWeight: "400",
+                    color: mode === "dark" ? "#f5f5f0" : "#f4f1ec",
+                    lineHeight: 33,
+                    letterSpacing: -0.5,
+                    marginBottom: 18,
+                  }}>
+                    Where should{"\n"}we <Text style={{ fontStyle: "italic", color: "#bef135" }}>start?</Text>
+                  </Text>
+
+                  {/* Pills */}
+                  <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
+                    {[
+                      { key: "diet_plan", label: "Diet Plan", icon: "nutrition-outline" as const, active: true },
+                      { key: "track_calories", label: "Calories", icon: "camera-outline" as const, active: false },
+                      { key: "advice", label: "Health", icon: "heart-outline" as const, active: false },
+                    ].map((pill, index) => (
+                      <Animated.View key={pill.key} entering={FadeIn.duration(300).delay(100 + index * 80)}>
+                        <Pressable onPress={() => handleWelcomeAction(pill.key)}>
+                          <View style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 5,
+                            paddingHorizontal: 13,
+                            paddingVertical: 7,
+                            borderRadius: 100,
+                            backgroundColor: pill.active ? "#bef135" : "rgba(255,255,255,0.07)",
+                            borderWidth: pill.active ? 0 : 1,
+                            borderColor: pill.active ? "transparent" : "rgba(255,255,255,0.07)",
+                          }}>
+                            <Ionicons
+                              name={pill.icon}
+                              size={11}
+                              color={pill.active ? "#060607" : "rgba(255,255,255,0.55)"}
+                            />
+                            <Text style={{
+                              fontSize: 12,
+                              fontWeight: "500",
+                              color: pill.active ? "#060607" : "rgba(255,255,255,0.55)",
+                            }}>
+                              {pill.label}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      </Animated.View>
+                    ))}
+                  </View>
+                </Animated.View>
+
+                {/* ── Content area ── */}
+                <View style={{ paddingHorizontal: 18 }}>
+                  {/* Today's Overview header */}
+                  <Animated.View entering={FadeIn.duration(400).delay(200)}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingTop: 14, paddingBottom: 10 }}>
+                      <Text style={{
+                        fontSize: 9,
+                        fontWeight: "700",
+                        letterSpacing: 1.8,
+                        textTransform: "uppercase",
+                        color: mode === "dark" ? "rgba(255,255,255,0.2)" : "rgba(12,10,8,0.3)",
+                      }}>
+                        Today's overview
                       </Text>
-                      <Ionicons name="chevron-forward" size={14} color={colors.textFaint} />
-                    </Pressable>
-                  ))}
+                      <Pressable onPress={() => router.push("/(main)/dashboard" as any)}>
+                        <Text style={{
+                          fontSize: 10,
+                          color: mode === "dark" ? "#bef135" : "#5a8a00",
+                          opacity: mode === "dark" ? 0.65 : 1,
+                        }}>
+                          see all →
+                        </Text>
+                      </Pressable>
+                    </View>
+
+                    {/* Stats inline */}
+                    {(() => {
+                      const summary = getDailySummary();
+                      const calTarget = 2000;
+                      const calPct = Math.min((summary.calories / calTarget) * 100, 100);
+                      const stepPct = Math.min((steps / (stepGoal || 10000)) * 100, 100);
+                      const waterPct = Math.min((waterGlasses / 8) * 100, 100);
+
+                      return (
+                        <View style={{ flexDirection: "row", paddingHorizontal: 4 }}>
+                          {[
+                            { val: summary.calories.toLocaleString(), unit: "cal", label: "Calories", pct: calPct },
+                            { val: steps >= 1000 ? (steps / 1000).toFixed(1) : String(steps), unit: steps >= 1000 ? "k" : "", label: "Steps", pct: stepPct },
+                            { val: String(waterGlasses), unit: "/8", label: "Water", pct: waterPct },
+                          ].map((stat, i, arr) => (
+                            <View
+                              key={stat.label}
+                              style={{
+                                flex: 1,
+                                paddingBottom: 14,
+                                paddingLeft: i > 0 ? 14 : 0,
+                                borderBottomWidth: 1,
+                                borderBottomColor: mode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(12,10,8,0.07)",
+                                borderRightWidth: i < arr.length - 1 ? 1 : 0,
+                                borderRightColor: mode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(12,10,8,0.08)",
+                              }}
+                            >
+                              <Text style={{
+                                fontSize: 24,
+                                fontWeight: "400",
+                                color: mode === "dark" ? "rgba(255,255,255,0.88)" : "rgba(12,10,8,0.85)",
+                                lineHeight: 24,
+                                letterSpacing: -0.5,
+                              }}>
+                                {stat.val}
+                                <Text style={{ fontSize: 10, fontWeight: "400", color: mode === "dark" ? "rgba(255,255,255,0.28)" : "rgba(12,10,8,0.3)" }}>
+                                  {stat.unit}
+                                </Text>
+                              </Text>
+                              <Text style={{ fontSize: 10, color: mode === "dark" ? "rgba(255,255,255,0.28)" : "rgba(12,10,8,0.35)", marginTop: 2 }}>
+                                {stat.label}
+                              </Text>
+                              <View style={{
+                                height: 2,
+                                backgroundColor: mode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(12,10,8,0.08)",
+                                borderRadius: 2,
+                                marginTop: 7,
+                                overflow: "hidden",
+                              }}>
+                                <View style={{
+                                  height: "100%",
+                                  width: `${stat.pct}%`,
+                                  backgroundColor: mode === "dark" ? "#bef135" : "#5a8a00",
+                                  borderRadius: 2,
+                                  opacity: mode === "dark" ? 0.7 : 0.8,
+                                }} />
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      );
+                    })()}
+                  </Animated.View>
+
+                  {/* Suggested header */}
+                  <Animated.View entering={FadeIn.duration(400).delay(350)}>
+                    <View style={{ paddingHorizontal: 4, paddingTop: 14, paddingBottom: 10 }}>
+                      <Text style={{
+                        fontSize: 9,
+                        fontWeight: "700",
+                        letterSpacing: 1.8,
+                        textTransform: "uppercase",
+                        color: mode === "dark" ? "rgba(255,255,255,0.2)" : "rgba(12,10,8,0.3)",
+                      }}>
+                        Suggested
+                      </Text>
+                    </View>
+
+                    {/* Action items */}
+                    <View style={{ paddingHorizontal: 4 }}>
+                      {[
+                        { key: "diet_plan", title: "View today's meal plan", sub: "3 meals tailored for you", icon: "nutrition-outline" as const },
+                        { key: "track_calories", title: "Log your last meal", sub: "Snap a photo to track instantly", icon: "camera-outline" as const },
+                        { key: "advice", title: "Get health advice", sub: "Personalised to your history", icon: "heart-outline" as const },
+                      ].map((action, i, arr) => (
+                        <Animated.View key={action.key} entering={FadeIn.duration(300).delay(400 + i * 80)}>
+                          <Pressable onPress={() => handleWelcomeAction(action.key)}>
+                            <View style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 11,
+                              paddingVertical: 11,
+                              borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                              borderBottomColor: mode === "dark" ? "rgba(255,255,255,0.05)" : "rgba(12,10,8,0.06)",
+                            }}>
+                              <View style={{
+                                width: 30,
+                                height: 30,
+                                borderRadius: 9,
+                                backgroundColor: mode === "dark" ? "rgba(190,241,53,0.07)" : "rgba(90,138,0,0.08)",
+                                borderWidth: 1,
+                                borderColor: mode === "dark" ? "rgba(190,241,53,0.1)" : "rgba(90,138,0,0.12)",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}>
+                                <Ionicons name={action.icon} size={13} color={mode === "dark" ? "#bef135" : "#5a8a00"} />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 12, fontWeight: "500", color: mode === "dark" ? "rgba(255,255,255,0.82)" : "rgba(12,10,8,0.8)", letterSpacing: -0.1 }}>
+                                  {action.title}
+                                </Text>
+                                <Text style={{ fontSize: 10, color: mode === "dark" ? "rgba(255,255,255,0.28)" : "rgba(12,10,8,0.35)", marginTop: 1 }}>
+                                  {action.sub}
+                                </Text>
+                              </View>
+                              <View style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: 11,
+                                backgroundColor: mode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(12,10,8,0.05)",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}>
+                                <Ionicons name="chevron-forward" size={9} color={mode === "dark" ? "rgba(255,255,255,0.3)" : "rgba(12,10,8,0.25)"} />
+                              </View>
+                            </View>
+                          </Pressable>
+                        </Animated.View>
+                      ))}
+                    </View>
+                  </Animated.View>
                 </View>
-              </Animated.View>
-            </View>
+              </ScrollView>
+            </Pressable>
           ) : (
               <FlatList
                 ref={flatListRef}
@@ -1828,7 +2101,9 @@ export default function ChatScreen() {
         <View
           style={{
             paddingBottom: insets.bottom + 6,
-            backgroundColor: colors.bg,
+            backgroundColor: showWelcomeScreen
+              ? (mode === "dark" ? "#060607" : "#f4f1ec")
+              : colors.bg,
           }}
         >
           {/* Reply preview bar */}
@@ -1859,115 +2134,124 @@ export default function ChatScreen() {
             </View>
           )}
 
-          {/* Input — voice or text mode */}
-          {isVoiceMode ? (
-            <VoiceInputBar
-              state={voiceChat.state}
-              transcript={voiceChat.transcript}
-              onStop={voiceChat.stop}
-              onEnd={endVoiceMode}
-              accentColor={colors.accent}
-              bgColor={colors.inputBg}
-              textColor={colors.inputText}
-              subTextColor={colors.inputPlaceholder}
-            />
-          ) : (
-          <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 6 }}>
-            {/* + button */}
+          {/* Input — text mode */}
+          {isVoiceMode ? null : (
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 14,
+            paddingVertical: 8,
+            gap: 9,
+            backgroundColor: showWelcomeScreen
+              ? (mode === "dark" ? "#060607" : "#f4f1ec")
+              : colors.bg,
+          }}>
+            {/* + circle button */}
             <Pressable
               onPress={() => setShowQuickActions(true)}
               hitSlop={4}
-              style={({ pressed }) => ({
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+            >
+              <View style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor: mode === "dark" ? "rgba(255,255,255,0.05)" : "rgba(12,10,8,0.06)",
+                borderWidth: 1,
+                borderColor: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(12,10,8,0.1)",
                 alignItems: "center",
                 justifyContent: "center",
-                opacity: pressed ? 0.5 : 1,
-              })}
-            >
-              <Ionicons name="add" size={24} color={colors.subText} />
+              }}>
+                <Ionicons name="add" size={16} color={mode === "dark" ? "rgba(255,255,255,0.4)" : "rgba(12,10,8,0.4)"} />
+              </View>
             </Pressable>
 
-            {/* Input field */}
+            {/* Input pill */}
             <View style={{
               flex: 1,
               flexDirection: "row",
               alignItems: "center",
-              backgroundColor: colors.inputBg + "99",
-              borderRadius: 22,
-              borderWidth: 1,
-              borderColor: colors.inputBorder + "40",
-              marginHorizontal: 6,
-              paddingLeft: 14,
-              paddingRight: 6,
-              minHeight: 44,
+              backgroundColor: mode === "dark" ? "rgba(255,255,255,0.05)" : "#fff",
+              borderRadius: 100,
+              borderWidth: mode === "dark" ? 1 : 1.5,
+              borderColor: mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(12,10,8,0.1)",
+              paddingLeft: 15,
+              paddingRight: 5,
+              height: 44,
+              ...(mode === "light" ? {
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.06,
+                shadowRadius: 12,
+                elevation: 3,
+              } : {}),
             }}>
               <TextInput
                 ref={inputRef}
                 value={input}
                 onChangeText={setInput}
-                placeholder={isRecordingVoiceNote ? "Recording..." : isTranscribingNote ? "Transcribing..." : "Ask Nyra..."}
-                placeholderTextColor={isRecordingVoiceNote ? "#FF4444" : colors.inputPlaceholder}
+                placeholder={isRecordingVoiceNote ? "Recording..." : isTranscribingNote ? "Transcribing..." : "Ask Nyra\u2026"}
+                placeholderTextColor={mode === "dark" ? "rgba(255,255,255,0.18)" : "rgba(12,10,8,0.28)"}
                 multiline
                 maxLength={1000}
                 editable={!isRecordingVoiceNote && !isTranscribingNote}
                 style={{
                   flex: 1,
-                  color: colors.inputText,
-                  fontSize: 15,
+                  color: mode === "dark" ? "#f5f5f0" : "#0c0a08",
+                  fontSize: 12,
                   paddingVertical: Platform.OS === "ios" ? 10 : 8,
-                  maxHeight: 100,
+                  maxHeight: 80,
                 }}
-                returnKeyType="send"
+                returnKeyType="default"
                 blurOnSubmit={false}
-                onSubmitEditing={() => handleSend()}
               />
-            </View>
 
-            {/* Mic or Send button */}
-            {input.trim() ? (
-              <Pressable
-                onPress={() => handleSend()}
-                disabled={isLoading}
-                style={({ pressed }) => ({
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: pressed ? colors.accentDark : colors.accent,
-                  opacity: isLoading ? 0.4 : 1,
-                })}
-              >
-                <Ionicons name="arrow-up" size={18} color="#000" />
-              </Pressable>
-            ) : (
+              {/* Mic */}
               <Pressable
                 onPress={toggleVoiceNote}
                 disabled={isTranscribingNote}
                 hitSlop={4}
-                style={({ pressed }) => ({
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: isTranscribingNote ? 0.4 : pressed ? 0.5 : 1,
-                  backgroundColor: isRecordingVoiceNote ? "#FF4444" + "20" : "transparent",
-                })}
+                style={{ width: 26, height: 26, alignItems: "center", justifyContent: "center" }}
               >
                 {isTranscribingNote ? (
                   <ActivityIndicator size="small" color={colors.accent} />
                 ) : (
                   <Ionicons
                     name={isRecordingVoiceNote ? "stop-circle" : "mic-outline"}
-                    size={22}
-                    color={isRecordingVoiceNote ? "#FF4444" : colors.subText}
+                    size={14}
+                    color={isRecordingVoiceNote ? "#FF4444" : (mode === "dark" ? "rgba(255,255,255,0.22)" : "rgba(12,10,8,0.22)")}
                   />
                 )}
               </Pressable>
-            )}
+
+              {/* Send button */}
+              {(() => {
+                const hasText = !!input.trim() && !isLoading;
+                return (
+                  <Pressable
+                    onPress={() => handleSend()}
+                    disabled={!hasText}
+                  >
+                    <View style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: hasText
+                        ? "#bef135"
+                        : (mode === "dark" ? "#bef135" : "#0c0a08"),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: hasText ? 1 : (mode === "dark" ? 1 : 1),
+                    }}>
+                      <Ionicons
+                        name="arrow-forward"
+                        size={14}
+                        color={mode === "dark" ? "#000" : (hasText ? "#000" : "#f4f1ec")}
+                      />
+                    </View>
+                  </Pressable>
+                );
+              })()}
+            </View>
           </View>
           )}
         </View>
@@ -1980,6 +2264,7 @@ export default function ChatScreen() {
         onReply={handleContextReply}
         onCopy={handleContextCopy}
         onPin={handleContextPin}
+        onDelete={handleContextDelete}
         isPinned={contextMenuItem ? pinnedMessageIds.has(contextMenuItem.id) : false}
         menuY={contextMenuY}
         menuX={contextMenuX}
@@ -2119,6 +2404,20 @@ export default function ChatScreen() {
         session={session}
         onLogout={handleLogout}
       />
+
+      {/* Voice call fullscreen overlay */}
+      {isVoiceMode && (
+        <VoiceInputBar
+          state={voiceChat.state}
+          transcript={voiceChat.transcript}
+          onStop={voiceChat.stop}
+          onEnd={endVoiceMode}
+          accentColor={colors.accent}
+          bgColor={colors.inputBg}
+          textColor={colors.inputText}
+          subTextColor={colors.inputPlaceholder}
+        />
+      )}
 
     </View>
   );

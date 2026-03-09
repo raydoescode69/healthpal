@@ -279,7 +279,7 @@ export default function EditProfileScreen() {
           >
             <Text
               style={{
-                color: canSave ? "#000" : colors.textFaint,
+                color: canSave ? "#fff" : colors.textFaint,
                 fontSize: 16,
                 fontWeight: "700",
               }}

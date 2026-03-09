@@ -6,8 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Keyboard,
-  TouchableWithoutFeedback,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -28,6 +27,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const { user, setProfile } = useAuthStore();
   const [step, setStep] = useState(1);
+  const [saving, setSaving] = useState(false);
   const [data, setData] = useState<OnboardingData>({
     name: "",
     age: "",
@@ -56,7 +56,11 @@ export default function OnboardingScreen() {
       return;
     }
 
-    // Final step — save profile (only columns that exist in the table)
+    // Final step — save profile
+    setSaving(true);
+    console.log("[Onboarding] Get Started pressed, saving=true");
+    console.log("[Onboarding] user:", user?.id);
+    console.log("[Onboarding] data:", JSON.stringify(data));
     try {
       const profileData = {
         id: user!.id,
@@ -68,15 +72,40 @@ export default function OnboardingScreen() {
         diet_type: data.diet_type,
       };
 
-      const { error } = await supabase.from("profiles").upsert(profileData);
-      if (error) {
-        Alert.alert("Error", error.message);
+      console.log("[Onboarding] profileData:", JSON.stringify(profileData));
+      console.log("[Onboarding] Calling supabase upsert...");
+
+      // Race the upsert against a timeout to avoid hanging forever
+      const upsertPromise = supabase.from("profiles").upsert(profileData).select().single();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Supabase upsert timed out after 8s")), 8000)
+      );
+
+      let upsertError: any = null;
+      try {
+        const result = await Promise.race([upsertPromise, timeoutPromise]) as any;
+        upsertError = result?.error;
+        console.log("[Onboarding] Upsert done. error:", upsertError?.message ?? "none");
+      } catch (e: any) {
+        console.log("[Onboarding] Upsert race error:", e?.message);
+        // On timeout, still try to navigate — the data might have saved
+      }
+
+      if (upsertError) {
+        setSaving(false);
+        console.log("[Onboarding] Upsert FAILED:", upsertError.message);
+        Alert.alert("Error", upsertError.message);
         return;
       }
 
+      // Update store and navigate
+      console.log("[Onboarding] Calling setProfile...");
       setProfile(profileData);
+      console.log("[Onboarding] setProfile done, navigating to chat...");
       router.replace("/(main)/chat");
     } catch (err: any) {
+      console.log("[Onboarding] CATCH error:", err?.message);
+      setSaving(false);
       Alert.alert("Error", err.message ?? "Failed to save profile.");
     }
   };
@@ -229,22 +258,26 @@ export default function OnboardingScreen() {
         <View style={{ marginTop: 32 }}>
           <TouchableOpacity
             onPress={handleNext}
-            disabled={!canNext()}
+            disabled={!canNext() || saving}
             style={{
               paddingVertical: 16,
               borderRadius: 16,
               alignItems: "center",
-              backgroundColor: canNext() ? "#A8FF3E" : "#333",
+              backgroundColor: canNext() && !saving ? "#A8FF3E" : "#333",
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 8,
             }}
           >
+            {saving && <ActivityIndicator size="small" color="#0D0D0D" />}
             <Text
               style={{
                 fontSize: 17,
                 fontWeight: "600",
-                color: canNext() ? "#0D0D0D" : "#666",
+                color: canNext() && !saving ? "#0D0D0D" : "#666",
               }}
             >
-              {step === TOTAL_STEPS ? "Get Started" : "Next"}
+              {saving ? "Setting up..." : step === TOTAL_STEPS ? "Get Started" : "Next"}
             </Text>
           </TouchableOpacity>
 

@@ -1,11 +1,33 @@
-import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { useState, useCallback, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  Keyboard,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Dimensions,
+} from "react-native";
 import { useRouter } from "expo-router";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeInUp,
+  FadeOut,
+} from "react-native-reanimated";
 import { Video, ResizeMode } from "expo-av";
 import Svg, { Path } from "react-native-svg";
+import * as WebBrowser from "expo-web-browser";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/useAuthStore";
+
+WebBrowser.maybeCompleteAuthSession();
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 function GoogleLogo({ size = 20 }: { size?: number }) {
   return (
@@ -20,13 +42,17 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
 
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { setProfile } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
 
-  const navigateAfterAuth = async (userId: string) => {
+  // No auto-transition — wait for user to tap "Get Started"
+
+  const navigateAfterAuth = useCallback(async (userId: string) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
@@ -39,7 +65,40 @@ export default function LoginScreen() {
     } else {
       router.replace("/(auth)/onboarding");
     }
-  };
+  }, [router, setProfile]);
+
+  const createSessionFromUrl = useCallback(async (url: string): Promise<boolean> => {
+    try {
+      const parsed = new URL(url);
+
+      const code = parsed.searchParams.get("code");
+      if (code) {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) return false;
+        const userId = data.session?.user?.id;
+        if (userId) { await navigateAfterAuth(userId); return true; }
+        return false;
+      }
+
+      const hashStr = parsed.hash?.startsWith("#") ? parsed.hash.slice(1) : "";
+      const hashParams = new URLSearchParams(hashStr);
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (error) return false;
+        const userId = data.session?.user?.id;
+        if (userId) { await navigateAfterAuth(userId); return true; }
+        return false;
+      }
+
+      const errorDesc = parsed.searchParams.get("error_description") || hashParams.get("error_description");
+      if (errorDesc) Alert.alert("Sign-in Error", errorDesc);
+
+      return false;
+    } catch { return false; }
+  }, [navigateAfterAuth]);
 
   const handleEmailAuth = async () => {
     if (!email || !password) {
@@ -57,10 +116,7 @@ export default function LoginScreen() {
       ]) as any;
       const { data, error } = result;
 
-      if (error) {
-        Alert.alert("Error", error.message);
-        return;
-      }
+      if (error) { Alert.alert("Error", error.message); return; }
 
       const userId = data.session?.user?.id;
       if (userId) {
@@ -75,70 +131,28 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Native Google Sign-In (prod builds only) ──
   const handleGoogleSignIn = async () => {
-    // Check if running in Expo Go — native Google Sign-In is not available there
-    const Constants = require("expo-constants").default;
-    const isExpoGo = Constants.appOwnership === "expo";
-    if (isExpoGo) {
-      Alert.alert(
-        "Not available",
-        "Google Sign-In requires a production build. Please use email/password, or run: npx expo run:android"
-      );
-      return;
-    }
-
-    let GoogleSignin: any = null;
-    let statusCodes: any = null;
-
-    try {
-      const gsi = require("@react-native-google-signin/google-signin");
-      GoogleSignin = gsi.GoogleSignin;
-      statusCodes = gsi.statusCodes;
-    } catch {
-      Alert.alert(
-        "Not available",
-        "Google Sign-In requires a production build. Please use email/password, or run: npx expo run:android"
-      );
-      return;
-    }
-
     setLoading(true);
     try {
-      GoogleSignin.configure({
-        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-        offlineAccess: true,
-      });
-
-      await GoogleSignin.hasPlayServices();
-      const signInResult = await GoogleSignin.signIn();
-      const idToken = signInResult?.data?.idToken;
-
-      if (!idToken) {
-        Alert.alert("Error", "Could not get ID token from Google.");
-        return;
-      }
-
-      const { data, error } = await supabase.auth.signInWithIdToken({
+      const redirectTo = "healthpal://google-auth";
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        token: idToken,
+        options: { redirectTo, skipBrowserRedirect: true },
       });
 
-      if (error) {
-        Alert.alert("Error", error.message);
+      if (error || !data.url) {
+        Alert.alert("Error", error?.message ?? "Could not start Google sign-in.");
+        setLoading(false);
         return;
       }
 
-      const userId = data.session?.user?.id;
-      if (userId) await navigateAfterAuth(userId);
-    } catch (err: any) {
-      if (err.code === statusCodes?.SIGN_IN_CANCELLED) {
-        // user cancelled
-      } else if (err.code === statusCodes?.PLAY_SERVICES_NOT_AVAILABLE) {
-        Alert.alert("Error", "Google Play Services not available.");
-      } else {
-        Alert.alert("Error", err.message ?? "Google sign-in failed.");
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type === "success" && result.url) {
+        const ok = await createSessionFromUrl(result.url);
+        if (!ok) Alert.alert("Error", "Could not complete sign-in. Please try again.");
       }
+    } catch (err: any) {
+      Alert.alert("Error", err.message ?? "Google sign-in failed.");
     } finally {
       setLoading(false);
     }
@@ -146,95 +160,146 @@ export default function LoginScreen() {
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1 }}
-    >
-    <View style={styles.container}>
-      <Video
-        source={require("../../assets/splash-video.mp4")}
-        style={StyleSheet.absoluteFillObject}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay
-        isLooping
-        isMuted
-      />
-      <View style={styles.overlay} />
+      <View style={styles.container}>
+        {/* Background video — always playing */}
+        <Video
+          source={require("../../assets/splash-video.mp4")}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay
+          isLooping
+          isMuted
+        />
+        <View style={styles.overlay} />
 
-      <View style={styles.content}>
-        <Animated.View entering={FadeIn.duration(800)} style={styles.header}>
-          <Text style={styles.title}>Nyra</Text>
-          <Text style={styles.subtitle}>Your AI nutrition companion</Text>
-        </Animated.View>
-
-        <Animated.View
-          entering={FadeInDown.duration(800).delay(400)}
-          style={styles.form}
-        >
-          {/* Google sign-in */}
-          <TouchableOpacity
-            onPress={handleGoogleSignIn}
-            disabled={loading}
-            activeOpacity={0.8}
-            style={styles.googleButton}
+        {/* Phase 1: Welcome screen */}
+        {!showAuth && (
+          <Animated.View
+            exiting={FadeOut.duration(500)}
+            style={styles.welcomeContainer}
           >
-            <GoogleLogo size={20} />
-            <Text style={styles.googleButtonText}>
-              {loading ? "Please wait..." : "Continue with Google"}
-            </Text>
-          </TouchableOpacity>
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+              <Animated.Text
+                entering={FadeIn.duration(800)}
+                style={styles.welcomeTitle}
+              >
+                Nyra
+              </Animated.Text>
+              <Animated.Text
+                entering={FadeIn.duration(800).delay(400)}
+                style={styles.welcomeSubtitle}
+              >
+                Your AI nutrition companion
+              </Animated.Text>
+              <Animated.Text
+                entering={FadeIn.duration(600).delay(900)}
+                style={styles.welcomeTagline}
+              >
+                Eat smarter. Live better.
+              </Animated.Text>
+            </View>
 
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
+            {/* "Get Started" button at bottom */}
+            <Animated.View
+              entering={FadeInUp.duration(600).delay(1200)}
+              style={{ paddingBottom: insets.bottom + 48, alignItems: "center" }}
+            >
+              <TouchableOpacity
+                onPress={() => setShowAuth(true)}
+                activeOpacity={0.8}
+                style={styles.getStartedBtn}
+              >
+                <Text style={styles.getStartedText}>Get Started</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </Animated.View>
+        )}
 
-          {/* Email / Password */}
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Email"
-            placeholderTextColor="rgba(255,255,255,0.4)"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            style={styles.input}
-          />
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Password"
-            placeholderTextColor="rgba(255,255,255,0.4)"
-            secureTextEntry
-            style={styles.input}
-          />
-
-          <TouchableOpacity
-            onPress={handleEmailAuth}
-            disabled={loading}
-            activeOpacity={0.8}
-            style={styles.emailButton}
+        {/* Phase 2: Auth form — smooth fade in */}
+        {showAuth && (
+          <Animated.View
+            entering={FadeIn.duration(600).delay(300)}
+            style={StyleSheet.absoluteFill}
           >
-            <Text style={styles.emailButtonText}>
-              {loading ? "Please wait..." : isSignUp ? "Sign Up" : "Sign In"}
-            </Text>
-          </TouchableOpacity>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ flex: 1 }}
+            >
+              <View style={styles.authContainer}>
+                {/* Header */}
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                  <Text style={styles.authTitle}>Nyra</Text>
+                  <Text style={styles.authSubtitle}>Your AI nutrition companion</Text>
+                </View>
 
-          <TouchableOpacity
-            onPress={() => setIsSignUp(!isSignUp)}
-            style={styles.switchBtn}
-          >
-            <Text style={styles.switchText}>
-              {isSignUp
-                ? "Already have an account? Sign In"
-                : "Don't have an account? Sign Up"}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
+                {/* Form area */}
+                <View style={[styles.formCard, { paddingBottom: insets.bottom + 20 }]}>
+                  {/* Google sign-in */}
+                  <TouchableOpacity
+                    onPress={handleGoogleSignIn}
+                    disabled={loading}
+                    activeOpacity={0.8}
+                    style={styles.googleButton}
+                  >
+                    <GoogleLogo size={20} />
+                    <Text style={styles.googleButtonText}>
+                      {loading ? "Please wait..." : "Continue with Google"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Divider */}
+                  <View style={styles.divider}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>or</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  {/* Email / Password */}
+                  <TextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="Email"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    style={styles.input}
+                  />
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Password"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                    secureTextEntry
+                    style={styles.input}
+                  />
+
+                  <TouchableOpacity
+                    onPress={handleEmailAuth}
+                    disabled={loading}
+                    activeOpacity={0.8}
+                    style={styles.emailButton}
+                  >
+                    <Text style={styles.emailButtonText}>
+                      {loading ? "Please wait..." : isSignUp ? "Sign Up" : "Sign In"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setIsSignUp(!isSignUp)}
+                    style={styles.switchBtn}
+                  >
+                    <Text style={styles.switchText}>
+                      {isSignUp
+                        ? "Already have an account? Sign In"
+                        : "Don't have an account? Sign Up"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </Animated.View>
+        )}
       </View>
-    </View>
-    </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );
 }
@@ -246,32 +311,72 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    backgroundColor: "rgba(0, 0, 0, 0.45)",
   },
-  content: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+
+  // ── Welcome phase ──
+  welcomeContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "space-between",
     paddingHorizontal: 32,
   },
-  header: {
-    alignItems: "center",
+  welcomeTitle: {
+    fontSize: 56,
+    color: "#fff",
+    fontWeight: "700",
+    letterSpacing: -1.5,
+    textAlign: "center",
   },
-  title: {
+  welcomeSubtitle: {
+    fontSize: 18,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 12,
+    textAlign: "center",
+    letterSpacing: 0.2,
+  },
+  welcomeTagline: {
+    fontSize: 15,
+    color: "rgba(190,241,53,0.8)",
+    marginTop: 20,
+    textAlign: "center",
+    fontWeight: "500",
+    letterSpacing: 0.5,
+  },
+  getStartedBtn: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    borderRadius: 28,
+  },
+  getStartedText: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+
+  // ── Auth phase ──
+  authContainer: {
+    flex: 1,
+  },
+  authTitle: {
     fontSize: 48,
     color: "#fff",
     fontWeight: "700",
     letterSpacing: -1,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.6)",
-    marginTop: 12,
     textAlign: "center",
   },
-  form: {
-    width: "100%",
-    marginTop: 40,
+  authSubtitle: {
+    fontSize: 16,
+    color: "rgba(255,255,255,0.6)",
+    marginTop: 10,
+    textAlign: "center",
+  },
+  formCard: {
+    paddingHorizontal: 28,
+    paddingTop: 28,
     gap: 14,
   },
   googleButton: {
@@ -298,27 +403,27 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 4,
+    marginVertical: 2,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
   dividerText: {
-    color: "rgba(255,255,255,0.4)",
+    color: "rgba(255,255,255,0.35)",
     fontSize: 13,
     marginHorizontal: 14,
   },
   input: {
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.1)",
     color: "#fff",
     fontSize: 16,
     paddingHorizontal: 20,
     paddingVertical: 15,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.06)",
   },
   emailButton: {
     backgroundColor: "#A8FF3E",
@@ -334,10 +439,10 @@ const styles = StyleSheet.create({
   },
   switchBtn: {
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 2,
   },
   switchText: {
-    color: "rgba(255,255,255,0.5)",
+    color: "rgba(255,255,255,0.45)",
     fontSize: 14,
   },
 });

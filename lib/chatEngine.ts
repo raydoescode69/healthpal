@@ -398,6 +398,13 @@ const DIET_PLAN_KEYWORDS = [
   "suggest a diet", "suggest a plan", "generate a plan",
 ];
 
+// Keywords that indicate user wants to PERSONALIZE (not just generate)
+const PERSONALIZE_KEYWORDS = [
+  "personalize", "personalise", "customize", "customise", "tailor",
+  "based on my", "for my lifestyle", "for my routine",
+  "regenerate", "update my plan", "new personalized",
+];
+
 function userExplicitlyWantsDietPlan(message: string): boolean {
   const lower = message.toLowerCase();
   return DIET_PLAN_KEYWORDS.some((kw) => lower.includes(kw));
@@ -443,7 +450,26 @@ export async function sendMessage(
   ];
 
   const isDietRequest = userExplicitlyWantsDietPlan(userMessage);
-  console.log("[ChatEngine] isDietRequest:", isDietRequest, "dietPlanAlreadyShown:", dietPlanAlreadyShown, "msg:", userMessage.slice(0, 60));
+  const isPersonalizeRequest = PERSONALIZE_KEYWORDS.some((kw) => userMessage.toLowerCase().includes(kw));
+  console.log("[ChatEngine] isDietRequest:", isDietRequest, "isPersonalize:", isPersonalizeRequest, "dietPlanAlreadyShown:", dietPlanAlreadyShown, "msg:", userMessage.slice(0, 60));
+
+  // ── Personalize path: ask lifestyle questions instead of generating plan ──
+  if (isPersonalizeRequest && isDietRequest && dietPlanAlreadyShown) {
+    messages.push({
+      role: "system",
+      content: `The user wants a PERSONALIZED diet plan. You already showed a generic one. Now ask 2-3 short lifestyle questions to personalize it better. Ask about:
+- Their occupation / daily routine (desk job, physical work, student, etc.)
+- Their typical schedule (when they wake up, work hours, when they sleep)
+- Activity level beyond work (gym, sports, walks, sedentary)
+- Any food preferences or restrictions not already known
+
+Ask these naturally in 2-3 casual bubbles separated by |||. Do NOT generate a diet plan yet. Just gather info.`,
+    });
+
+    const raw = await callOpenAI(messages, "gpt-4o-mini", 400, 0.75);
+    extractProfileInBackground(userId, userMessage).catch(() => {});
+    return parseResponse(raw);
+  }
 
   // ── Fast path: generate diet plan locally, only ask AI for intro text ──
   if (isDietRequest && !dietPlanAlreadyShown) {
@@ -480,6 +506,46 @@ export async function sendMessage(
       parsed.foodLogResult = foodLogResult;
     }
 
+    return parsed;
+  }
+
+  // ── Check if user is providing lifestyle data for diet personalization ──
+  const recentHistory = messageHistory.slice(-4);
+  const aiAskedLifestyleQuestions = recentHistory.some(
+    (m) => m.role === "assistant" && (
+      m.content.toLowerCase().includes("occupation") ||
+      m.content.toLowerCase().includes("routine") ||
+      m.content.toLowerCase().includes("schedule") ||
+      m.content.toLowerCase().includes("activity level") ||
+      m.content.toLowerCase().includes("typical day")
+    )
+  );
+
+  // If AI just asked lifestyle questions and user replied, regenerate diet plan
+  if (aiAskedLifestyleQuestions && !isDietRequest && dietPlanAlreadyShown) {
+    // Extract profile data first
+    await extractProfileInBackground(userId, userMessage);
+
+    // Reload context with updated profile
+    const updatedContext = await loadContext(userId);
+
+    const localPlan = generateDietPlan({
+      weight_kg: updatedContext.profile?.weight_kg,
+      height_cm: updatedContext.profile?.height_cm,
+      age: updatedContext.profile?.age,
+      goal: updatedContext.profile?.goal,
+      diet_type: updatedContext.profile?.diet_type,
+      allergies: updatedContext.profile?.allergies,
+    });
+
+    messages.push({
+      role: "system",
+      content: "The user just provided their lifestyle details. Acknowledge what they shared briefly and say you've updated their plan. Keep it to 1-2 casual sentences. A new diet plan card will appear automatically.",
+    });
+
+    const raw = await callOpenAI(messages, "gpt-4o-mini", 200, 0.75);
+    const parsed = parseResponse(raw);
+    parsed.dietPlan = localPlan;
     return parsed;
   }
 

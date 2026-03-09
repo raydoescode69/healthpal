@@ -66,6 +66,12 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Nyra needs access to your camera to snap and track your meals."
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Nyra needs access to your photos to analyze food from your gallery.",

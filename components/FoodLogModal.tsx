@@ -13,6 +13,7 @@ import * as ImagePicker from "expo-image-picker";
 import { analyzeFoodFromImage } from "../lib/foodAnalyzer";
 import { useThemeStore } from "../store/useThemeStore";
 import { THEMES } from "../lib/theme";
+import CameraWithGallery from "./CameraWithGallery";
 import type { FoodAnalysisResult } from "../lib/types";
 
 interface FoodLogModalProps {
@@ -35,32 +36,20 @@ export default function FoodLogModal({
   onFoodAnalyzed,
 }: FoodLogModalProps) {
   const [analyzing, setAnalyzing] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const mode = useThemeStore((s) => s.mode);
   const colors = THEMES[mode];
 
-  const handleImageAnalysis = async (source: "camera" | "gallery") => {
+  const handleGalleryPick = async () => {
     try {
-      if (source === "camera") {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Required", "Camera access is needed to snap your meals.");
-          return;
-        }
-      } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Required", "Photo library access is needed to pick food images.");
-          return;
-        }
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Photo library access is needed to pick food images.");
+        return;
       }
 
-      const pickerFn =
-        source === "camera"
-          ? ImagePicker.launchCameraAsync
-          : ImagePicker.launchImageLibraryAsync;
-
-      const result = await pickerFn({
+      const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         quality: 0.5,
         base64: true,
@@ -89,14 +78,38 @@ export default function FoodLogModal({
     onClose();
   };
 
+  const handleCameraClose = () => {
+    setCameraOpen(false);
+  };
+
+  const handleCameraFoodAnalyzed = (result: FoodAnalysisResult, imageUri?: string) => {
+    setCameraOpen(false);
+    onClose();
+    onFoodAnalyzed(result, imageUri);
+  };
+
   const handleOption = (key: string) => {
     if (key === "type") {
       onClose();
       onTypeFood();
+    } else if (key === "camera") {
+      // Open inline camera — don't close this modal first (race condition)
+      setCameraOpen(true);
     } else {
-      handleImageAnalysis(key as "camera" | "gallery");
+      handleGalleryPick();
     }
   };
+
+  // When camera is open, render CameraWithGallery instead of the options sheet
+  if (cameraOpen) {
+    return (
+      <CameraWithGallery
+        visible={true}
+        onClose={handleCameraClose}
+        onFoodAnalyzed={handleCameraFoodAnalyzed}
+      />
+    );
+  }
 
   return (
     <Modal

@@ -62,10 +62,13 @@ export default function CameraScreen() {
         mediaType: MediaLibrary.MediaType.photo,
       });
       if (assets.length > 0) {
-        setLatestPhoto(assets[0].uri);
+        // On Android, asset.uri may be a content:// URI that Image can't render.
+        // Use getAssetInfoAsync to get the file:// localUri.
+        const info = await MediaLibrary.getAssetInfoAsync(assets[0]);
+        setLatestPhoto(info.localUri || assets[0].uri);
       }
-    } catch {
-      // Silently fail — thumbnail just won't show
+    } catch (e) {
+      console.log("[Camera] Failed to fetch latest photo:", e);
     }
   }, []);
 
@@ -166,10 +169,14 @@ export default function CameraScreen() {
         {/* Gallery thumbnail */}
         <Pressable onPress={handlePickGallery} style={styles.thumbnailWrapper}>
           {latestPhoto ? (
-            <Image source={{ uri: latestPhoto }} style={styles.thumbnail} />
+            <Image
+              source={{ uri: latestPhoto }}
+              style={styles.thumbnail}
+              onError={() => setLatestPhoto(null)}
+            />
           ) : (
             <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-              <Ionicons name="images" size={22} color="#888" />
+              <Ionicons name="images-outline" size={24} color="#fff" />
             </View>
           )}
         </Pressable>

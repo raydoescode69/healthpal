@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, Animated, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -38,8 +38,11 @@ export default function RoastScreen() {
     loadTodayRoast(user.id);
   }, [user?.id]);
 
+  const hasAttemptedGeneration = useRef(false);
+
   useEffect(() => {
-    if (!user?.id || roast || storeLoading || generating) return;
+    if (!user?.id || roast || storeLoading || generating || hasAttemptedGeneration.current) return;
+    hasAttemptedGeneration.current = true;
     const go = async () => {
       setGenerating(true);
       try {
@@ -49,7 +52,9 @@ export default function RoastScreen() {
         });
         const today = new Date().toISOString().slice(0, 10);
         await saveRoast(user.id, { roast_text: result.roast_text, verdict_title: result.verdict_title, verdict_emoji: result.verdict_emoji, calories, steps, sleep_hours: sleepHours, scored_at: today });
-      } catch {}
+      } catch (e) {
+        console.warn("[Roast] Generation/save failed:", e);
+      }
       setGenerating(false);
     };
     go();

@@ -44,14 +44,27 @@ export const useRoastStore = create<RoastState>()((set) => ({
     try {
       const { data, error } = await supabase
         .from("roasts")
-        .insert({ user_id: userId, ...roast })
+        .upsert(
+          { user_id: userId, ...roast },
+          { onConflict: "user_id,scored_at" }
+        )
         .select()
         .single();
 
       if (error) throw error;
       set({ roast: data as Roast, isLoading: false });
-    } catch {
-      set({ isLoading: false });
+    } catch (e) {
+      console.warn("[RoastStore] saveRoast failed:", e);
+      // Set roast from input to prevent infinite retry loop
+      set({
+        roast: {
+          id: "",
+          user_id: userId,
+          created_at: new Date().toISOString(),
+          ...roast,
+        } as Roast,
+        isLoading: false,
+      });
     }
   },
 

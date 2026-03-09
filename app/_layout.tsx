@@ -36,7 +36,7 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
-  const { session, setSession, setUser, setProfile } = useAuthStore();
+  const { session, profile, setSession, setUser, setProfile } = useAuthStore();
   const mode = useThemeStore((s) => s.mode);
   const syncWithSystem = useThemeStore((s) => s.syncWithSystem);
   const systemColorScheme = useColorScheme();
@@ -111,12 +111,16 @@ export default function RootLayout() {
 
         if (sess?.user?.id) {
           try {
-            const { data: profile } = await supabase
+            const { data: dbProfile } = await supabase
               .from("profiles")
               .select("*")
               .eq("id", sess.user.id)
               .single();
-            if (profile) setProfile(profile);
+            // Only update store if DB has a complete profile
+            // Never overwrite a locally-set complete profile with null/incomplete data
+            if (dbProfile && dbProfile.age && dbProfile.weight_kg && dbProfile.height_cm) {
+              setProfile(dbProfile);
+            }
           } catch {}
         }
       }
@@ -171,20 +175,29 @@ export default function RootLayout() {
     if (!fontsLoaded || !authCheckDone) return;
 
     const inAuth = segments[0] === "(auth)";
+    console.log("[Layout] Route guard: session=", !!session, "inAuth=", inAuth, "segments=", segments.join("/"), "profile=", profile?.age, profile?.weight_kg, profile?.height_cm);
 
     if (!session && !inAuth) {
+      console.log("[Layout] No session, redirecting to /(auth)");
       router.replace("/(auth)");
     } else if (session && inAuth) {
-      // Check if profile has required fields for nutrition calculations
-      const profile = useAuthStore.getState().profile;
       const isProfileComplete = profile?.age && profile?.weight_kg && profile?.height_cm;
+      console.log("[Layout] Session exists, inAuth, profileComplete=", !!isProfileComplete);
       if (isProfileComplete) {
+        console.log("[Layout] -> navigating to /(main)/chat");
         router.replace("/(main)/chat");
       } else {
-        router.replace("/(auth)/onboarding");
+        // Only redirect to onboarding if not already there
+        const onOnboarding = segments.join("/").includes("onboarding");
+        if (!onOnboarding) {
+          console.log("[Layout] -> navigating to /(auth)/onboarding");
+          router.replace("/(auth)/onboarding");
+        } else {
+          console.log("[Layout] -> already on onboarding, skipping");
+        }
       }
     }
-  }, [session, fontsLoaded, authCheckDone, segments]);
+  }, [session, profile, fontsLoaded, authCheckDone, segments]);
 
   if (!fontsLoaded) {
     return (
